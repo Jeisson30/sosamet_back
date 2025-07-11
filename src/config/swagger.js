@@ -13,6 +13,10 @@ const options = {
         url: 'http://localhost:3000',
         description: 'Servidor local',
       },
+      {
+        url: 'http://gestordocumental.sytes.net',
+        description: 'Servidor productivo',
+      },
     ],
   },
   apis: ['./src/routes/**/*.js'],

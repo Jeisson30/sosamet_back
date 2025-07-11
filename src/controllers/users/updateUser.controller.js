@@ -1,17 +1,9 @@
 const db = require("../../config/db");
 
 const updateUser = (req, res) => {
-    const { id_usuario, nombre, apellido, correo, identificacion, id_rol } =
-        req.body;
+    const { p_nit, p_nombre, p_apellido, p_email, p_rol } = req.body;
 
-    if (
-        !id_usuario ||
-        !nombre ||
-        !apellido ||
-        !correo ||
-        !identificacion ||
-        !id_rol
-    ) {
+    if (!p_nit || !p_nombre || !p_apellido || !p_email || !p_rol) {
         return res.status(400).json({
             message:
                 "Todos los campos son obligatorios para actualizar el usuario",
@@ -19,8 +11,8 @@ const updateUser = (req, res) => {
     }
 
     db.query(
-        "CALL sp_actualizar_usuario(?, ?, ?, ?, ?, ?)",
-        [id_usuario, nombre, apellido, correo, identificacion, id_rol],
+        "CALL sp_actualizar_usuario(?, ?, ?, ?, ?)",
+        [p_nit, p_nombre, p_apellido, p_email, p_rol],
         (err, results) => {
             if (err) {
                 if (err.sqlState === "45000") {

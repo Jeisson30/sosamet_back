@@ -15,29 +15,25 @@ const { updateUser } = require("../../controllers/users/updateUser.controller");
  *           schema:
  *             type: object
  *             required:
- *               - id_usuario
- *               - nombre
- *               - apellido
- *               - correo
- *               - identificacion
- *               - id_rol
+ *               - p_nit
+ *               - p_nombre
+ *               - p_apellido
+ *               - p_email
+ *               - p_rol
  *             properties:
- *               id_usuario:
- *                 type: integer
- *                 example: 4
- *               nombre:
- *                 type: string
- *                 example: Juan
- *               apellido:
- *                 type: string
- *                 example: Pérez
- *               correo:
- *                 type: string
- *                 example: juan.perez@example.com
- *               identificacion:
+ *               p_nit:
  *                 type: string
  *                 example: 123456789
- *               id_rol:
+ *               p_nombre:
+ *                 type: string
+ *                 example: Juan
+ *               p_apellido:
+ *                 type: string
+ *                 example: Pérez
+ *               p_email:
+ *                 type: string
+ *                 example: juan.perez@example.com
+ *               p_rol:
  *                 type: integer
  *                 example: 2
  *     responses:

@@ -19,6 +19,9 @@ const loginUser = require('./src/routes/auth/loginUser.routes')
 
 const typeContracts = require('./src/routes/contracts/getTypeContracts.routes')
 const typeFields = require('./src/routes/contracts/getTypeFields.routes')
+const insertDataContract = require('./src/routes/contracts/insertContract.routes')
+const getContractDetail = require('./src/routes/contracts/contractDetail.routes')
+
 
 dotenv.config();
 
@@ -54,6 +57,9 @@ app.use('/api/auth/loginUser', loginUser)
 
 app.use('/api/contracts/getTypeContracts', typeContracts)
 app.use('/api/contracts/getTypeFields', typeFields)
+app.use('/api/contracts', insertDataContract)
+app.use('/api/contracts', getContractDetail)
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

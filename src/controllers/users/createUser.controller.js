@@ -4,9 +4,9 @@ const nodemailer = require("nodemailer");
 
 // Configuración (puedes mover esto a un archivo .env)
 const JWT_SECRET = process.env.JWT_SECRET;
-const FRONTEND_URL = process.env.SERVER_PROD;
+const FRONTEND_URL = process.env.SERVER_LOCAL;
 
-const transporter = nodemailer.createTransport({
+const transporter = nodemailer.createTransport({ 
     service: "gmail",
     auth: {
         user: process.env.EMAIL_USER,

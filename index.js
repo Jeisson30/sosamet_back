@@ -26,7 +26,25 @@ const getContractDetail = require('./src/routes/contracts/contractDetail.routes'
 dotenv.config();
 
 const app = express();
-app.use(cors());
+
+const allowedOrigins = [
+    'http://localhost:4200',
+    'http://sosametsa.sytes.net'
+  ];
+  
+  app.use(cors({
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('No permitido por CORS'));
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+  }));
+  
 app.use(express.json());
 
 // 🔹 Documentación Swagger
@@ -63,5 +81,5 @@ app.use('/api/contracts', getContractDetail)
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+    console.log(`Servidor corriendo en puerto ${PORT}`);
 });

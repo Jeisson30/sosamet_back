@@ -10,13 +10,13 @@ const options = {
     },
     servers: [
       {
-        url: 'http://localhost:3000',
-        description: 'Servidor local',
-      },
-      {
-        url: 'http://gestordocumental.sytes.net',
+        url: 'http://sosametsa.sytes.net/',
         description: 'Servidor productivo',
       },
+      /* {
+        url: 'http://localhost:3000',
+        description: 'Servidor local',
+      } */
     ],
   },
   apis: ['./src/routes/**/*.js'],

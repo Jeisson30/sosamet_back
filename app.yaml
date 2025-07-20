@@ -10,6 +10,6 @@ env_variables:
   DB_NAME: 'sosamet'
   JWT_SECRET: 'key$%'
   SERVER_LOCAL: 'http://localhost:4200'
-  SERVER_PROD: 'http://gestordocumental.sytes.net'
+  SERVER_PROD: 'http://sosametsa.sytes.net'
   EMAIL_USER: 'jedadeveloper32@gmail.com'
   EMAIL_PASS: 'xlil pknq pdav moih'

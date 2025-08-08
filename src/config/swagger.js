@@ -9,14 +9,14 @@ const options = {
       description: 'Documentación de la API de Sosamet',
     },
     servers: [
+      /*{
+        url: 'http://sosametsa.sytes.net/',
+        description: 'Servidor productivo',
+      },*/
       {
         url: 'http://localhost:3000',
         description: 'Servidor local',
-      },
-      {
-        url: 'http://gestordocumental.sytes.net',
-        description: 'Servidor productivo',
-      },
+      }
     ],
   },
   apis: ['./src/routes/**/*.js'],

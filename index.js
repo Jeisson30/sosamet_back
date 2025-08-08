@@ -21,12 +21,36 @@ const typeContracts = require('./src/routes/contracts/getTypeContracts.routes')
 const typeFields = require('./src/routes/contracts/getTypeFields.routes')
 const insertDataContract = require('./src/routes/contracts/insertContract.routes')
 const getContractDetail = require('./src/routes/contracts/contractDetail.routes')
+const uploadFile = require('./src/routes/contracts/uploadFilesContracts.routes')
+const uploadFileIva = require('./src/routes/contracts/uploadFilesIva.routes')
+
 
 
 dotenv.config();
 
 const app = express();
-app.use(cors());
+
+const allowedOrigins = [
+  'http://localhost:4200',
+  'http://sosametsa.sytes.net',
+  'http://localhost:3000',             // Swagger local
+  'http://127.0.0.1:3000',             // Swagger local alternativo
+  'http://sosametsa.sytes.net:3000'   // Swagger vía IP pública
+];
+  
+  app.use(cors({
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('No permitido por CORS'));
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+  }));
+  
 app.use(express.json());
 
 // 🔹 Documentación Swagger
@@ -59,9 +83,11 @@ app.use('/api/contracts/getTypeContracts', typeContracts)
 app.use('/api/contracts/getTypeFields', typeFields)
 app.use('/api/contracts', insertDataContract)
 app.use('/api/contracts', getContractDetail)
+app.use('/api/contracts', uploadFile)
+app.use('/api/contracts', uploadFileIva)
 
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+    console.log(`Servidor corriendo en puerto ${PORT}`);
 });

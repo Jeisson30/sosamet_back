@@ -35,7 +35,9 @@ const allowedOrigins = [
   'http://sosametsa.sytes.net',
   'http://localhost:3000',             // Swagger local
   'http://127.0.0.1:3000',             // Swagger local alternativo
-  'http://sosametsa.sytes.net:3000'   // Swagger vía IP pública
+  'http://sosametsa.sytes.net:3000',   // Swagger vía IP pública
+  'https://gd.sosamet.com',
+  'https://gd.sosamet.com:3000'
 ];
   
   app.use(cors({

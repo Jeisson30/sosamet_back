@@ -1,9 +1,8 @@
 const XLSX = require("xlsx");
 const fs = require("fs");
-const path = require("path");
 const db = require("../../config/db");
 
-// Ejecutar query con promesas
+// Función para ejecutar queries con promesas
 const ejecutarQuery = (sql, values) => {
   return new Promise((resolve, reject) => {
     db.query(sql, values, (err, result) => {
@@ -17,12 +16,31 @@ const ejecutarQuery = (sql, values) => {
   });
 };
 
-// Sanitizar y convertir valores numéricos
+// Función para sanitizar y convertir valores numéricos
 const parseNumber = (value) => {
   if (typeof value === "string") {
-    return parseFloat(value.replace(/[^0-9.-]+/g, "").replace(",", "."));
+    return parseFloat(
+      value.replace(/[^0-9,-.]+/g, "").replace(",", ".")
+    );
   }
   return value || 0;
+};
+
+// Normaliza cabeceras para comparar (ignora mayúsculas, espacios, puntos, º)
+const normalize = (str) =>
+  str
+    ? str
+        .toString()
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, " ")
+        .replace(/[.\u00B0]/g, "")
+    : "";
+
+// Encuentra la clave real de una columna en la fila
+const getKey = (row, target) => {
+  const targetNorm = normalize(target);
+  return Object.keys(row).find((key) => normalize(key) === targetNorm);
 };
 
 // Función principal para subir archivo IVA
@@ -36,9 +54,10 @@ const uploadExcelIVA = async (req, res) => {
     const sheetNames = workbook.SheetNames;
     console.log("Hojas encontradas:", sheetNames);
 
-    // Verifica que exista una hoja llamada "IVA"
     if (!sheetNames.includes("IVA")) {
-      return res.status(400).json({ error: "La hoja 'IVA' no fue encontrada en el archivo." });
+      return res
+        .status(400)
+        .json({ error: "La hoja 'IVA' no fue encontrada en el archivo." });
     }
 
     const ivaSheet = workbook.Sheets["IVA"];
@@ -48,25 +67,19 @@ const uploadExcelIVA = async (req, res) => {
       return res.status(400).json({ error: "La hoja 'IVA' está vacía." });
     }
 
-    // Detecta la clave de la columna REF
-    const refKey = Object.keys(ivaData[0]).find(key => key.trim().toUpperCase() === "REF");
-    if (!refKey) {
-      return res.status(400).json({ error: "No se encontró la columna 'REF' en la hoja 'IVA'." });
-    }
+    // Obtener el número de contrato del primer registro
+    const numdoc =
+      ivaData[0][getKey(ivaData[0], "NO CONTRATO")] || "SIN_NUMDOC";
 
-    const numdoc = ivaData[0][refKey] || "SIN_NUMDOC";
     const tipo_doc = req.body.tipo_doc || "Contrato";
 
-    console.log("Clave REF encontrada:", refKey);
-    console.log("Valor numdoc (desde columna REF):", numdoc);
+    console.log("Número de contrato detectado:", numdoc);
 
     for (const row of ivaData) {
-      const getKey = (target) =>
-        Object.keys(row).find((key) => key.trim().toUpperCase() === target.toUpperCase());
+      const item = row[getKey(row, "ITEM")];
+      const vrIva = parseNumber(row[getKey(row, "VR IVA")]);
 
-      const item = row[getKey("ITEM")];
-      const vrIva = parseNumber(row[getKey("VR. IVA")]);
-
+      // Validaciones para omitir filas inválidas o totales
       if (
         !item ||
         (typeof item === "string" && item.toUpperCase().includes("TOTAL")) ||
@@ -77,33 +90,38 @@ const uploadExcelIVA = async (req, res) => {
       }
 
       const values = [
-        row[getKey("ITEM")],
-        row[getKey("REF")],
-        parseNumber(row[getKey("CANT")]),
-        row[getKey("UND")],
-        parseNumber(row[getKey("ANCHO")]),
-        parseNumber(row[getKey("ALTO")]),
-        row[getKey("DESCRIPCION")],
-        parseNumber(row[getKey("VALOR BASE")]),
-        parseNumber(row[getKey("% IVA")]),
-        parseNumber(row[getKey("VR. IVA")]),
-        parseNumber(row[getKey("VR.  TOTAL")]),
+        row[getKey(row, "ITEM")],
+        row[getKey(row, "INSUMO")],
+        row[getKey(row, "REF")],
+        parseNumber(row[getKey(row, "CANT")]),
+        row[getKey(row, "UM")],
+        parseNumber(row[getKey(row, "ANCHO")]),
+        parseNumber(row[getKey(row, "ALTO")]),
+        row[getKey(row, "DESCRIPCION")],
+        parseNumber(row[getKey(row, "VALOR BASE")]),
+        parseNumber(row[getKey(row, "% IVA")]),
+        parseNumber(row[getKey(row, "VR IVA")]),
+        parseNumber(row[getKey(row, "VR TOTAL")]),
         tipo_doc,
-        numdoc
+        numdoc,
       ];
 
       await ejecutarQuery(
-        `CALL sp_insertar_iva_pleno(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `CALL sp_insertar_iva_pleno(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         values
       );
     }
 
-    fs.unlinkSync(req.file.path); // Elimina archivo temporal
-    res.status(200).json({ message: "Archivo IVA procesado correctamente." });
-
+    fs.unlinkSync(req.file.path); // Eliminar archivo temporal
+    res
+      .status(200)
+      .json({ message: "Archivo IVA procesado y datos insertados correctamente." });
   } catch (error) {
     console.error("Error al procesar archivo IVA:", error);
-    res.status(500).json({ error: "Error al procesar archivo IVA", detalle: error.message });
+    res.status(500).json({
+      error: "Error al procesar archivo IVA",
+      detalle: error.message,
+    });
   }
 };
 

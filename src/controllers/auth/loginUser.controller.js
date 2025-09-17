@@ -30,7 +30,7 @@ const loginUser = (req, res) => {
       });
     }
 
-    const { resultado, id_usuario, password_db } = result;
+    const { resultado, id_usuario, password_db, nombre, apellido  } = result;
 
     switch (resultado) {
       case 'USUARIO_NO_EXISTE':
@@ -73,6 +73,8 @@ const loginUser = (req, res) => {
               user: {
                 id_usuario,
                 email: p_email,
+                nombre,
+                apellido
               },
             });
           });
@@ -93,6 +95,8 @@ const loginUser = (req, res) => {
             user: {
               id_usuario,
               email: p_email,
+              nombre,
+              apellido
             },
           });
         }

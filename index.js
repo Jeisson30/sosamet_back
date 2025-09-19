@@ -23,6 +23,7 @@ const insertDataContract = require('./src/routes/contracts/insertContract.routes
 const getContractDetail = require('./src/routes/contracts/contractDetail.routes')
 const uploadFile = require('./src/routes/contracts/uploadFilesContracts.routes')
 const uploadFileIva = require('./src/routes/contracts/uploadFilesIva.routes')
+const uploadExcelOrder = require('./src/routes/contracts/uploadFilesBuyOrder.routes')
 
 
 
@@ -87,6 +88,7 @@ app.use('/api/contracts', insertDataContract)
 app.use('/api/contracts', getContractDetail)
 app.use('/api/contracts', uploadFile)
 app.use('/api/contracts', uploadFileIva)
+app.use('/api/contracts', uploadExcelOrder)
 
 
 const PORT = process.env.PORT || 3000;

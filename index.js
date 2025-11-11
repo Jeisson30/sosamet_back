@@ -26,8 +26,7 @@ const uploadFileIva = require('./src/routes/contracts/uploadFilesIva.routes')
 const uploadExcelOrder = require('./src/routes/contracts/uploadFilesBuyOrder.routes')
 const uploadExcelRemisiones = require('./src/routes/contracts/uploadFilesRemisiones.routes')
 const uploadExcelActasPago = require('./src/routes/contracts/uploadFilesActasPago.rutes')
-
-
+const getCompanies = require('./src/routes/contracts/getCompanies.routes');
 
 dotenv.config();
 
@@ -93,7 +92,7 @@ app.use('/api/contracts', uploadFileIva)
 app.use('/api/contracts', uploadExcelOrder)
 app.use('/api/contracts', uploadExcelRemisiones)
 app.use('/api/contracts', uploadExcelActasPago)
-
+app.use('/api/contracts', getCompanies);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

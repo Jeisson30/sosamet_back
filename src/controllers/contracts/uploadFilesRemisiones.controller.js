@@ -58,6 +58,7 @@ const uploadExcelRemisiones = async (req, res) => {
     for (const row of remisionesData) {
       const item = row[getKey(row, "ITEM")];
       const contrato = row[getKey(row, "NO CONTRATO")];
+      const empresa = row[getKey(row, "EMPRESA")];
       const cantidad = row[getKey(row, "CANTIDAD")];
       const um = row[getKey(row, "UM")];
       const detalle = row[getKey(row, "DETALLE")];
@@ -71,6 +72,7 @@ const uploadExcelRemisiones = async (req, res) => {
 
       const values = [
         contrato,
+        empresa || null,
         item,
         cantidad,
         um,
@@ -80,7 +82,7 @@ const uploadExcelRemisiones = async (req, res) => {
       ];
 
       await ejecutarQuery(
-        `CALL sp_insertar_remisiones_plano(?, ?, ?, ?, ?, ?, ?)`,
+        `CALL sp_insertar_remisiones_plano(?, ?, ?, ?, ?, ?, ?, ?)`,
         values
       );
     }

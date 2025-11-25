@@ -50,6 +50,7 @@ const uploadExcelActasPago = async (req, res) => {
     // ✅ Encabezados esperados
     const expectedHeaders = [
       "REF",
+      "EMPRESA",
       "NO CONTRATO",
       "ITEM",
       "CANT",
@@ -76,6 +77,7 @@ const uploadExcelActasPago = async (req, res) => {
 
     for (const row of actasData) {
       const ref = row[getKey(row, "REF")];
+      const empresa = row[getKey(row, "EMPRESA")];
       const numero_contrato = row[getKey(row, "NO CONTRATO")];
       const item = row[getKey(row, "ITEM")];
       const cant = row[getKey(row, "CANT")];
@@ -91,6 +93,7 @@ const uploadExcelActasPago = async (req, res) => {
 
       const values = [
         ref || null,
+        empresa || null,
         numero_contrato,
         item,
         cant || null,
@@ -102,7 +105,7 @@ const uploadExcelActasPago = async (req, res) => {
       ];
 
       await ejecutarQuery(
-        `CALL sp_insertar_actas_pago_plano(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `CALL sp_insertar_actas_pago_plano(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         values
       );
     }

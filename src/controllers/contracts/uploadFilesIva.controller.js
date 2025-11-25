@@ -89,8 +89,11 @@ const uploadExcelIVA = async (req, res) => {
         continue;
       }
 
+      const empresa = row[getKey(row, "EMPRESA")];
+
       const values = [
         row[getKey(row, "ITEM")],
+        empresa,
         row[getKey(row, "INSUMO")],
         row[getKey(row, "REF")],
         parseNumber(row[getKey(row, "CANT")]),
@@ -107,7 +110,7 @@ const uploadExcelIVA = async (req, res) => {
       ];
 
       await ejecutarQuery(
-        `CALL sp_insertar_iva_pleno(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `CALL sp_insertar_iva_pleno(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         values
       );
     }

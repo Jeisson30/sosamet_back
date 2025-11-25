@@ -84,9 +84,12 @@ const uploadExcel = async (req, res) => {
         continue;
       }
 
+      const empresa = row[getKey(row, "EMPRESA")] || null;
+
       const values = [
         row[getKey(row, "ITEM")],
-        row[getKey(row, "INSUMO")], // ⚡ nuevo campo INSUMO
+        empresa,
+        row[getKey(row, "INSUMO")],
         row[getKey(row, "REF")],
         parseNumber(row[getKey(row, "CANT")]),
         row[getKey(row, "UM")],
@@ -104,11 +107,11 @@ const uploadExcel = async (req, res) => {
         parseNumber(row[getKey(row, "VR IVA")]),
         parseNumber(row[getKey(row, "VR TOTAL")]),
         tipo_doc,
-        numdoc,
+        numdoc
       ];
 
       await ejecutarQuery(
-        `CALL sp_insertar_aiu(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `CALL sp_insertar_aiu(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         values
       );
     }

@@ -30,7 +30,7 @@ const loginUser = (req, res) => {
       });
     }
 
-    const { resultado, id_usuario, password_db, nombre, apellido  } = result;
+    const { resultado, id_usuario, password_db, nombre, apellido, id_perfil, nombre_perfil, id_rol  } = result;
 
     switch (resultado) {
       case 'USUARIO_NO_EXISTE':
@@ -74,7 +74,10 @@ const loginUser = (req, res) => {
                 id_usuario,
                 email: p_email,
                 nombre,
-                apellido
+                apellido,
+                id_perfil,
+                nombre_perfil,
+                id_rol
               },
             });
           });
@@ -96,7 +99,10 @@ const loginUser = (req, res) => {
               id_usuario,
               email: p_email,
               nombre,
-              apellido
+              apellido,
+              id_perfil,
+              nombre_perfil,
+              id_rol
             },
           });
         }

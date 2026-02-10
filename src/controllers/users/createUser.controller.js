@@ -50,7 +50,7 @@ const createUser = (req, res) => {
             const token = jwt.sign(
                 { identificacion: p_identificacion },
                 JWT_SECRET,
-                { expiresIn: "15m" }
+                { expiresIn: "24h" }
             );
 
             // ✅ Armar link para frontend
@@ -66,7 +66,7 @@ const createUser = (req, res) => {
           <p>Tu cuenta ha sido creada exitosamente.</p>
           <p>Haz clic en el siguiente enlace para crear tu contraseña:</p>
           <p><a href="${link}">${link}</a></p>
-          <p><strong>Este enlace expirará en 15 minutos.</strong></p>
+          <p><strong>Este enlace expirará en 24 Horas.</strong></p>
         `,
             };
 

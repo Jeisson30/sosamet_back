@@ -36,67 +36,135 @@ const getKey = (row, target) => {
 // Controlador principal para subir archivo de Remisiones
 const uploadExcelRemisiones = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No se proporcionó un archivo." });
-    }
-
-    const workbook = XLSX.readFile(req.file.path);
-    const sheetNames = workbook.SheetNames;
-
-    console.log("Hojas encontradas:", sheetNames);
-
-    // Toma la primera hoja (ya que no se especifica un nombre fijo)
-    const sheet = workbook.Sheets[sheetNames[0]];
-    const remisionesData = XLSX.utils.sheet_to_json(sheet);
-
-    if (!remisionesData || remisionesData.length === 0) {
-      return res.status(400).json({ error: "El archivo está vacío." });
-    }
 
     const tipo_doc = req.body.tipo_doc || "Remisión";
 
-    for (const row of remisionesData) {
-      const item = row[getKey(row, "ITEM")];
-      const contrato = row[getKey(row, "NO CONTRATO")];
-      const empresa = row[getKey(row, "EMPRESA")];
-      const cantidad = row[getKey(row, "CANTIDAD")];
-      const um = row[getKey(row, "UM")];
-      const detalle = row[getKey(row, "DETALLE")];
-      const observaciones = row[getKey(row, "OBSERVACIONES")];
+    // 🔥 CASO 1: VIENE ARCHIVO
+    if (req.file) {
 
-      // Validaciones básicas
-      if (!item || !contrato) {
-        console.warn("⚠️ Fila ignorada por datos incompletos:", row);
-        continue;
+      const workbook = XLSX.readFile(req.file.path);
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const remisionesData = XLSX.utils.sheet_to_json(sheet);
+
+      if (!remisionesData.length) {
+        return res.status(400).json({ error: "El archivo está vacío." });
       }
 
-      const values = [
-        contrato,
-        empresa || null,
-        item,
-        cantidad,
-        um,
-        detalle,
-        observaciones,
-        tipo_doc,
+      for (const row of remisionesData) {
+        const item = row[getKey(row, "ITEM")];
+        const contrato = row[getKey(row, "NO CONTRATO")];
+        const empresa = row[getKey(row, "EMPRESA")];
+        const cantidad = row[getKey(row, "CANTIDAD")];
+        const um = row[getKey(row, "UM")];
+        const detalle = row[getKey(row, "DETALLE")];
+        const observaciones = row[getKey(row, "OBSERVACIONES")];
+
+        if (!item || !contrato) continue;
+
+        await ejecutarQuery(
+          `CALL sp_insertar_remisiones_plano(?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            contrato,
+            empresa || null,
+            item,
+            cantidad,
+            um,
+            detalle,
+            observaciones,
+            tipo_doc,
+          ]
+        );
+      }
+
+      fs.unlinkSync(req.file.path);
+
+      return res.status(200).json({
+        message: "Archivo de remisiones procesado correctamente.",
+      });
+    }
+    // CASO 2: VIENEN DATOS MANUALES
+    if (req.body.detalle_remision) {
+
+      const detalle = JSON.parse(req.body.detalle_remision);
+
+      const {
+        numero_contrato,
+        remision_material,
+        fecha_remision,
+        cliente,
+        proyecto,
+        despacho,
+        transporto,
+        empresa_asociada
+      } = req.body;
+
+      if (!numero_contrato) {
+        return res.status(400).json({ error: "El número de contrato es obligatorio." });
+      }
+
+      if (!empresa_asociada) {
+        return res.status(400).json({ error: "La empresa asociada es obligatoria." });
+      }
+
+      // Generar número documento
+      const numerodoc = `RM-${Date.now()}`;
+
+      // Insertar encabezado dinámico
+      const campos = [
+        { nombre: "numero_contrato", valor: numero_contrato },
+        { nombre: "remision_material", valor: remision_material },
+        { nombre: "fecha_remision", valor: fecha_remision },
+        { nombre: "cliente", valor: cliente },
+        { nombre: "proyecto", valor: proyecto },
+        { nombre: "despacho", valor: despacho },
+        { nombre: "transporto", valor: transporto },
+        { nombre: "empresa_asociada", valor: empresa_asociada }
       ];
 
-      await ejecutarQuery(
-        `CALL sp_insertar_remisiones_plano(?, ?, ?, ?, ?, ?, ?, ?)`,
-        values
-      );
+      for (const campo of campos) {
+        await ejecutarQuery(
+          `CALL sp_insertar_item_documento(?, ?, ?, ?)`,
+          [
+            "REMISIONES",
+            numerodoc,
+            campo.nombre,
+            campo.valor ? campo.valor.toString() : ""
+          ]
+        );
+      }
+
+      //Insertar detalle
+      for (const row of detalle) {
+        await ejecutarQuery(
+          `CALL sp_insertar_remisiones_plano(?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            numero_contrato,
+            empresa_asociada,
+            row.item,
+            row.cantidad,
+            row.um,
+            row.detalle,
+            row.observaciones,
+            tipo_doc,
+          ]
+        );
+      }
+
+      return res.status(200).json({
+        message: "Remisión manual insertada correctamente.",
+        numerodoc
+      });
     }
 
-    // Eliminar el archivo temporal luego de procesarlo
-    fs.unlinkSync(req.file.path);
 
-    res.status(200).json({
-      message: "Archivo de remisiones procesado e insertado correctamente.",
+    return res.status(400).json({
+      error: "No se recibió archivo ni datos manuales.",
     });
+
   } catch (error) {
-    console.error("Error al procesar archivo de remisiones:", error);
+    console.error("Error:", error);
     res.status(500).json({
-      error: "Error al procesar archivo de remisiones",
+      error: "Error al procesar remisiones",
       detalle: error.message,
     });
   }

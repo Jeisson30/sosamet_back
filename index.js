@@ -28,6 +28,8 @@ const uploadExcelRemisiones = require('./src/routes/contracts/uploadFilesRemisio
 const uploadExcelActasPago = require('./src/routes/contracts/uploadFilesActasPago.rutes')
 const getCompanies = require('./src/routes/contracts/getCompanies.routes');
 const getAllUsers = require('./src/routes/gestion/order-work/getAllusers.routes')
+const insertLiquidationCourts = require('./src/routes/gestion/liquidation-courts/insertLiquidationCourts.routes')
+const insertOrderWork = require('./src/routes/gestion/order-work/insertOrderWork.routes')
 
 dotenv.config();
 
@@ -98,6 +100,8 @@ app.use('/api/contracts', getCompanies);
 // TODO: Route Gestion
 
 app.use('/api/gestion', getAllUsers)
+app.use('/api/gestion/liquidation-courts', insertLiquidationCourts);
+app.use('/api/gestion/order-work', insertOrderWork);;
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

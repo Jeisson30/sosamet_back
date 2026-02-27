@@ -88,6 +88,7 @@ const uploadExcelRemisiones = async (req, res) => {
       const detalle = JSON.parse(req.body.detalle_remision);
 
       const {
+        tipo_doc_rem,
         numero_contrato,
         remision_material,
         fecha_remision,
@@ -95,7 +96,9 @@ const uploadExcelRemisiones = async (req, res) => {
         proyecto,
         despacho,
         transporto,
-        empresa_asociada
+        empresa_asociada,
+        elaboro,
+        direccion_empresa
       } = req.body;
 
       if (!numero_contrato) {
@@ -111,6 +114,7 @@ const uploadExcelRemisiones = async (req, res) => {
 
       // Insertar encabezado dinámico
       const campos = [
+        { nombre: "tipo_doc_rem", valor: tipo_doc_rem },
         { nombre: "numero_contrato", valor: numero_contrato },
         { nombre: "remision_material", valor: remision_material },
         { nombre: "fecha_remision", valor: fecha_remision },
@@ -118,7 +122,9 @@ const uploadExcelRemisiones = async (req, res) => {
         { nombre: "proyecto", valor: proyecto },
         { nombre: "despacho", valor: despacho },
         { nombre: "transporto", valor: transporto },
-        { nombre: "empresa_asociada", valor: empresa_asociada }
+        { nombre: "empresa_asociada", valor: empresa_asociada },
+        { nombre: "elaboro", valor: elaboro },
+        { nombre: "direccion_empresa", valor: direccion_empresa }
       ];
 
       for (const campo of campos) {

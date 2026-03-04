@@ -2,7 +2,11 @@ const XLSX = require("xlsx");
 const fs = require("fs");
 const db = require("../../config/db");
 
-// Ejecuta query con promesa
+// ===============================
+// HELPERS PROFESIONALES
+// ===============================
+
+// Ejecutar query con promesas (igual que remisiones)
 const ejecutarQuery = (sql, values) => {
   return new Promise((resolve, reject) => {
     db.query(sql, values, (err, result) => {
@@ -16,110 +20,171 @@ const ejecutarQuery = (sql, values) => {
   });
 };
 
-// Normaliza texto para comparar sin importar mayúsculas, espacios o signos
-const normalize = (str) =>
-  str
-    ? str.toString().trim().toUpperCase().replace(/\s+/g, " ").replace(/[.\u00B0]/g, "")
-    : "";
+// Convierte a número seguro (evita NaN, limpia comas)
+const toNumber = (value) => {
+  if (value === null || value === undefined || value === "") return 0;
 
-// Encuentra la clave real de una columna (según cabecera)
-const getKey = (row, target) => {
-  const targetNorm = normalize(target);
-  return Object.keys(row).find((key) => normalize(key) === targetNorm);
+  const clean = value.toString().replace(/,/g, "").trim();
+  const n = Number(clean);
+
+  return isNaN(n) ? 0 : n;
 };
 
-// ✅ Controlador principal
+// Convierte porcentajes correctamente
+const toPercentage = (value) => {
+  if (value === null || value === undefined || value === "") return 0;
+
+  let clean = value.toString()
+    .replace("%", "")
+    .replace(/,/g, "")
+    .trim();
+
+  let n = Number(clean);
+
+  if (isNaN(n)) return 0;
+
+  // Si Excel trae 0.10 como 10%
+  if (n > 0 && n < 1) {
+    n = n * 100;
+  }
+
+  // Seguridad financiera
+  if (n < 0) n = 0;
+  if (n > 100) n = 100;
+
+  return Number(n.toFixed(2));
+};
+
+// Convierte vacío a null (para textos)
+const toNull = (value) => {
+  if (!value || value.toString().trim() === "") return null;
+  return value.toString().trim();
+};
+
+// ===============================
+// CONTROLADOR PRINCIPAL
+// ===============================
+
 const uploadExcelActasPago = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: "No se proporcionó un archivo." });
+      return res.status(400).json({ error: "No se proporcionó archivo." });
     }
 
     const workbook = XLSX.readFile(req.file.path);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const actasData = XLSX.utils.sheet_to_json(sheet);
+    const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
-    if (!actasData || actasData.length === 0) {
-      fs.unlinkSync(req.file.path);
-      return res.status(400).json({ error: "El archivo está vacío." });
+    const dataRows = rawData
+      .slice(2)
+      .filter(r => r[2] && r[2] !== "ITEM");
+    
+    if (!dataRows.length) {
+      return res.status(400).json({ error: "El archivo no contiene datos válidos." });
     }
 
-    // ✅ Extraer los encabezados del archivo subido
-    const headers = Object.keys(actasData[0]).map((h) => normalize(h));
+    const first = dataRows[0];
 
-    // ✅ Encabezados esperados
-    const expectedHeaders = [
-      "REF",
-      "EMPRESA",
-      "NO CONTRATO",
-      "ITEM",
-      "CANT",
-      "UM",
-      "DESCRIPCION",
-      "VALOR BASE",
-      "VR TOTAL",
-    ].map(normalize);
+    const ref = toNull(first[0]);
+    const numero_contrato = toNull(first[1]);
+    const tipo_doc = "Acta de Pago";
 
-    // ✅ Validar que los encabezados esperados estén presentes
-    const missingHeaders = expectedHeaders.filter(
-      (header) => !headers.includes(header)
-    );
-
-    if (missingHeaders.length > 0) {
-      fs.unlinkSync(req.file.path);
+    if (!numero_contrato) {
       return res.status(400).json({
-        error: "El archivo no corresponde al formato de Actas de Pago.",
-        detalle: `Faltan las siguientes columnas: ${missingHeaders.join(", ")}`,
+        error: "El número de contrato es obligatorio."
       });
     }
 
-    const tipo_doc = req.body.tipo_doc || "Acta de Pago";
+    let totalDocumento = 0;
+    
+    // Insertar maestro
+    const maestroResult = await ejecutarQuery(
+      `INSERT INTO actas_pago_plano 
+       (ref, numero_contrato, tipo_doc, vr_total_documento, total_a_pagar)
+       VALUES (?, ?, ?, 0, 0)`,
+      [ref, numero_contrato, tipo_doc]
+    );
 
-    for (const row of actasData) {
-      const ref = row[getKey(row, "REF")];
-      const empresa = row[getKey(row, "EMPRESA")];
-      const numero_contrato = row[getKey(row, "NO CONTRATO")];
-      const item = row[getKey(row, "ITEM")];
-      const cant = row[getKey(row, "CANT")];
-      const um = row[getKey(row, "UM")];
-      const descripcion = row[getKey(row, "DESCRIPCION")];
-      const valor_base = row[getKey(row, "VALOR BASE")];
-      const valor_total = row[getKey(row, "VR TOTAL")];
+    const actaId = maestroResult.insertId;
 
-      if (!numero_contrato || !item) {
-        console.warn("⚠️ Fila ignorada por datos incompletos:", row);
-        continue;
-      }
+    // Insertar detalle
+    for (const row of dataRows) {
+      console.log("Fila cruda:", row);
+      const item = toNull(row[2]);
+      if (!item) continue;
 
-      const values = [
-        ref || null,
-        empresa || null,
-        numero_contrato,
-        item,
-        cant || null,
-        um || null,
-        descripcion || null,
-        valor_base || 0,
-        valor_total || 0,
-        tipo_doc,
-      ];
+      const totalFila = toNumber(row[30]);
+      totalDocumento += totalFila;
 
       await ejecutarQuery(
-        `CALL sp_insertar_actas_pago_plano(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        values
+        `INSERT INTO actas_pago_plano_detalle (
+          acta_pago_id,
+          item,
+          cant,
+          um,
+          descripcion,
+          valor_base,
+          pct_adm, vr_adm,
+          pct_imp, vr_imp,
+          pct_ut, vr_ut,
+          pct_iva_aiu, vr_iva_aiu,
+          pct_iva_pleno, vr_iva_pleno,
+          pct_rte_fte, vr_rte_fte,
+          pct_rte_ica, vr_rte_ica,
+          pct_rte_iva, vr_rte_iva,
+          pct_rte_garantia, vr_rte_garantia,
+          pct_fic, vr_fic,
+          otros,
+          total_fila
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [
+          actaId,
+          item,
+          toNumber(row[3]),
+          toNull(row[4]),
+          toNull(row[5]),
+          toNumber(row[6]),
+
+          // PORCENTAJES CON PROTECCIÓN
+          toPercentage(row[7]),  toNumber(row[8]),
+          toPercentage(row[9]),  toNumber(row[10]),
+          toPercentage(row[11]), toNumber(row[12]),
+          toPercentage(row[13]), toNumber(row[14]),
+          toPercentage(row[15]), toNumber(row[16]),
+          toPercentage(row[17]), toNumber(row[18]),
+          toPercentage(row[19]), toNumber(row[20]),
+          toPercentage(row[21]), toNumber(row[22]),
+          toPercentage(row[23]), toNumber(row[24]),
+          toPercentage(row[25]), toNumber(row[26]),
+
+          toNumber(row[29]),
+          totalFila
+        ]
       );
     }
+
+    // Actualizar maestro con total real
+    await ejecutarQuery(
+      `UPDATE actas_pago_plano
+       SET vr_total_documento = ?, total_a_pagar = ?
+       WHERE id = ?`,
+      [totalDocumento, totalDocumento, actaId]
+    );
 
     fs.unlinkSync(req.file.path);
 
     res.status(200).json({
-      message: "✅ Archivo de Actas de Pago procesado e insertado correctamente.",
+      message: "Acta cargada correctamente.",
+      actaId,
+      totalDocumento
     });
+
   } catch (error) {
-    console.error("❌ Error al procesar archivo de Actas de Pago:", error);
+    console.error("Error:", error);
+
     res.status(500).json({
-      error: "Error al procesar archivo de Actas de Pago",
-      detalle: error.message,
+      error: "Error procesando archivo",
+      detalle: error.message
     });
   }
 };

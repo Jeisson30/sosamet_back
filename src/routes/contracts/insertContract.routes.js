@@ -1,8 +1,10 @@
 const express = require("express");
+const { body } = require("express-validator");
 const router = express.Router();
 const {
   insertContract,
 } = require("../../controllers/contracts/insertContract.controller");
+const { validateRequest } = require("../../middlewares/validation.middleware");
 
 /**
  * @swagger
@@ -73,6 +75,33 @@ const {
  *         description: Error interno del servidor
  */
 
-router.post("/insert", insertContract);
+router.post(
+  "/insert",
+  [
+    body("tipo_doc")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("El tipo de documento es obligatorio"),
+    body("numerodoc")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("El número de documento es obligatorio"),
+    body("campos")
+      .isArray({ min: 1 })
+      .withMessage("Debe enviar al menos un campo"),
+    body("campos.*.nombre")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Cada campo debe tener un nombre"),
+    body("campos.*.valor")
+      .isString()
+      .withMessage("Cada campo debe tener un valor de tipo texto"),
+    validateRequest,
+  ],
+  insertContract
+);
 
 module.exports = router;

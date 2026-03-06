@@ -1,8 +1,10 @@
 const express = require("express");
+const { body } = require("express-validator");
 const router = express.Router();
 const {
     changeStateUser,
 } = require("../../controllers/users/changeStateUser.controller");
+const { validateRequest } = require("../../middlewares/validation.middleware");
 
 /**
  * @swagger
@@ -44,6 +46,19 @@ const {
  *         description: Error del servidor al actualizar usuario
  */
 
-router.post("/", changeStateUser);
+router.post(
+  "/",
+  [
+    body("p_id_usuario")
+      .isInt()
+      .withMessage("El id de usuario debe ser numérico"),
+    body("p_nuevo_estado")
+      .isString()
+      .isIn(["ACTIVO", "INACTIVO", "BLOQUEADO", "ELIMINADO"])
+      .withMessage("El nuevo estado no es válido"),
+    validateRequest,
+  ],
+  changeStateUser
+);
 
 module.exports = router;

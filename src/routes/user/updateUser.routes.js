@@ -1,6 +1,8 @@
 const express = require("express");
+const { body } = require("express-validator");
 const router = express.Router();
 const { updateUser } = require("../../controllers/users/updateUser.controller");
+const { validateRequest } = require("../../middlewares/validation.middleware");
 
 /**
  * @swagger
@@ -56,6 +58,33 @@ const { updateUser } = require("../../controllers/users/updateUser.controller");
  *         description: Error del servidor al actualizar usuario
  */
 
-router.put("/", updateUser);
+router.put(
+  "/",
+  [
+    body("p_nit")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("El NIT es obligatorio"),
+    body("p_nombre")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("El nombre es obligatorio"),
+    body("p_apellido")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("El apellido es obligatorio"),
+    body("p_email")
+      .isEmail()
+      .withMessage("El email debe tener un formato válido"),
+    body("p_rol")
+      .isInt()
+      .withMessage("El rol debe ser numérico"),
+    validateRequest,
+  ],
+  updateUser
+);
 
 module.exports = router;

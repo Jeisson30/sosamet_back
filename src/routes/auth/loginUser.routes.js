@@ -1,6 +1,8 @@
 const express = require('express');
+const { body } = require('express-validator');
 const router = express.Router();
 const { loginUser } = require('../../controllers/auth/loginUser.controller');
+const { validateRequest } = require('../../middlewares/validation.middleware');
 
 /**
  * @swagger
@@ -81,6 +83,19 @@ const { loginUser } = require('../../controllers/auth/loginUser.controller');
  *                   type: object
  */
 
-router.post('/', loginUser);
+router.post(
+  '/',
+  [
+    body('p_email')
+      .isEmail()
+      .withMessage('El email debe tener un formato válido'),
+    body('p_password')
+      .isString()
+      .isLength({ min: 6 })
+      .withMessage('La contraseña debe tener al menos 6 caracteres'),
+    validateRequest,
+  ],
+  loginUser
+);
 
 module.exports = router;

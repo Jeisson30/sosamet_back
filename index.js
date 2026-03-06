@@ -1,11 +1,16 @@
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const rateLimit = require("express-rate-limit");
 const db = require("./src/config/db");
 
 // 🔹 Swagger
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpec = require("./src/config/swagger");
+
+// 🔹 Middlewares
+const { authMiddleware } = require('./src/middlewares/auth.middleware');
+const { errorHandler } = require('./src/middlewares/error.middleware');
 
 // 🔹 Importar rutas
 const roleRoutes = require("./src/routes/role.routes");
@@ -60,6 +65,18 @@ const allowedOrigins = [
   
 app.use(express.json());
 
+// 🔹 Rate limiting específico para login
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 10, // máximo 10 intentos por IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    code: 0,
+    message: "Demasiados intentos de inicio de sesión. Intenta más tarde.",
+  },
+});
+
 // 🔹 Documentación Swagger
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
@@ -68,40 +85,35 @@ app.get("/", (req, res) => {
     res.send("API de Sosamet funcionando");
 });
 
-//Rutas
+// Rutas públicas (sin JWT)
+app.use('/api/auth/changePassword', changePassword);
+app.use('/api/auth/loginUser', loginLimiter, loginUser);
 
-app.use("/api/roles", roleRoutes);
+// Rutas protegidas (requieren Authorization: Bearer <token>)
+app.use("/api/roles", authMiddleware, roleRoutes);
 
-// TODO: Route users
+app.use("/api/createUser", authMiddleware, userRoutes);
+app.use('/api/getUsers', authMiddleware, getUsers);
+app.use('/api/changeStateUser', authMiddleware, changeStateUsers);
+app.use('/api/updateUser', authMiddleware, updateUsers);
 
-app.use("/api/createUser", userRoutes);
-app.use('/api/getUsers', getUsers)
-app.use('/api/changeStateUser', changeStateUsers)
-app.use('/api/updateUser', updateUsers)
+app.use('/api/contracts/getTypeContracts', authMiddleware, typeContracts);
+app.use('/api/contracts/getTypeFields', authMiddleware, typeFields);
+app.use('/api/contracts', authMiddleware, insertDataContract);
+app.use('/api/contracts', authMiddleware, getContractDetail);
+app.use('/api/contracts', authMiddleware, uploadFile);
+app.use('/api/contracts', authMiddleware, uploadFileIva);
+app.use('/api/contracts', authMiddleware, uploadExcelOrder);
+app.use('/api/contracts', authMiddleware, uploadExcelRemisiones);
+app.use('/api/contracts', authMiddleware, uploadExcelActasPago);
+app.use('/api/contracts', authMiddleware, getCompanies);
 
-// TODO: Route Auth
+app.use('/api/gestion', authMiddleware, getAllUsers);
+app.use('/api/gestion/liquidation-courts', authMiddleware, insertLiquidationCourts);
+app.use('/api/gestion/order-work', authMiddleware, insertOrderWork);
 
-app.use('/api/auth/changePassword', changePassword)
-app.use('/api/auth/loginUser', loginUser)
-
-// TODO: Route Contracts
-
-app.use('/api/contracts/getTypeContracts', typeContracts)
-app.use('/api/contracts/getTypeFields', typeFields)
-app.use('/api/contracts', insertDataContract)
-app.use('/api/contracts', getContractDetail)
-app.use('/api/contracts', uploadFile)
-app.use('/api/contracts', uploadFileIva)
-app.use('/api/contracts', uploadExcelOrder)
-app.use('/api/contracts', uploadExcelRemisiones)
-app.use('/api/contracts', uploadExcelActasPago)
-app.use('/api/contracts', getCompanies);
-
-// TODO: Route Gestion
-
-app.use('/api/gestion', getAllUsers)
-app.use('/api/gestion/liquidation-courts', insertLiquidationCourts);
-app.use('/api/gestion/order-work', insertOrderWork);;
+// 🔹 Middleware global de errores (después de todas las rutas)
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

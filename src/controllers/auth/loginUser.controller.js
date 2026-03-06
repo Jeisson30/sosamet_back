@@ -1,6 +1,10 @@
 const db = require('../../config/db');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+
+const JWT_SECRET = process.env.JWT_SECRET;
+const TOKEN_EXPIRES_IN = '2h';
 
 const loginUser = (req, res) => {
   const { p_email, p_password } = req.body;
@@ -17,7 +21,6 @@ const loginUser = (req, res) => {
       return res.status(500).json({
         code: 0,
         message: 'Error al ejecutar el procedimiento',
-        error: err,
       });
     }
 
@@ -56,7 +59,6 @@ const loginUser = (req, res) => {
               return res.status(500).json({
                 code: 0,
                 message: 'Error al validar la contraseña',
-                error: bcryptErr,
               });
             }
 
@@ -66,6 +68,12 @@ const loginUser = (req, res) => {
                 message: 'Contraseña o usuario incorrecto',
               });
             }
+
+            const token = jwt.sign(
+              { id_usuario, id_perfil, id_rol },
+              JWT_SECRET,
+              { expiresIn: TOKEN_EXPIRES_IN }
+            );
 
             return res.status(200).json({
               code: 1,
@@ -79,6 +87,7 @@ const loginUser = (req, res) => {
                 nombre_perfil,
                 id_rol
               },
+              token,
             });
           });
         } else {
@@ -92,6 +101,12 @@ const loginUser = (req, res) => {
             });
           }
 
+          const token = jwt.sign(
+            { id_usuario, id_perfil, id_rol },
+            JWT_SECRET,
+            { expiresIn: TOKEN_EXPIRES_IN }
+          );
+
           return res.status(200).json({
             code: 1,
             message: 'Inicio de sesión exitoso',
@@ -104,6 +119,7 @@ const loginUser = (req, res) => {
               nombre_perfil,
               id_rol
             },
+            token,
           });
         }
         break;

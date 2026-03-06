@@ -1,6 +1,8 @@
 const express = require('express');
+const { body } = require('express-validator');
 const router = express.Router();
 const { createUser } = require('../../controllers/users/createUser.controller');
+const { validateRequest } = require('../../middlewares/validation.middleware');
 
 /**
  * @swagger
@@ -80,6 +82,37 @@ const { createUser } = require('../../controllers/users/createUser.controller');
  *                   example: Error al crear usuario
  */
 
-router.post('/', createUser);
+router.post(
+  '/',
+  [
+    body('p_nombre')
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage('El nombre es obligatorio'),
+    body('p_apellido')
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage('El apellido es obligatorio'),
+    body('p_identificacion')
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage('La identificación es obligatoria'),
+    body('p_email')
+      .isEmail()
+      .withMessage('El email debe tener un formato válido'),
+    body('p_idrol')
+      .isInt()
+      .withMessage('El id de rol debe ser numérico'),
+    body('p_idperfil')
+      .optional()
+      .isInt()
+      .withMessage('El id de perfil debe ser numérico'),
+    validateRequest,
+  ],
+  createUser
+);
 
 module.exports = router;

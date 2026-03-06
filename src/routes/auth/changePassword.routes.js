@@ -1,6 +1,8 @@
 const express = require('express');
+const { body } = require('express-validator');
 const router = express.Router();
 const { changePassword } = require('../../controllers/auth/changePassword.controller');
+const { validateRequest } = require('../../middlewares/validation.middleware');
 
 /**
  * @swagger
@@ -79,6 +81,23 @@ const { changePassword } = require('../../controllers/auth/changePassword.contro
  *                   type: object
  */
 
-router.post('/', changePassword);
+router.post(
+  '/',
+  [
+    body('token')
+      .isString()
+      .withMessage('El token es obligatorio'),
+    body('p_clave_actual')
+      .isString()
+      .isLength({ min: 6 })
+      .withMessage('La clave actual debe tener al menos 6 caracteres'),
+    body('p_nueva_password')
+      .isString()
+      .isLength({ min: 8 })
+      .withMessage('La nueva contraseña debe tener al menos 8 caracteres'),
+    validateRequest,
+  ],
+  changePassword
+);
 
 module.exports = router;

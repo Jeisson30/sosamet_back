@@ -29,6 +29,7 @@ const getContractDetail = require('./src/routes/contracts/contractDetail.routes'
 const uploadFile = require('./src/routes/contracts/uploadFilesContracts.routes')
 const uploadFileIva = require('./src/routes/contracts/uploadFilesIva.routes')
 const uploadExcelOrder = require('./src/routes/contracts/uploadFilesBuyOrder.routes')
+const consultPurchaseOrders = require('./src/routes/contracts/consultPurchaseOrders.routes')
 const uploadExcelRemisiones = require('./src/routes/contracts/uploadFilesRemisiones.routes')
 const uploadExcelActasPago = require('./src/routes/contracts/uploadFilesActasPago.rutes')
 const getCompanies = require('./src/routes/contracts/getCompanies.routes');
@@ -99,6 +100,7 @@ app.use('/api/updateUser', authMiddleware, updateUsers);
 
 app.use('/api/contracts/getTypeContracts', authMiddleware, typeContracts);
 app.use('/api/contracts/getTypeFields', authMiddleware, typeFields);
+app.use('/api/contracts/purchase-orders', authMiddleware, consultPurchaseOrders);
 app.use('/api/contracts', authMiddleware, insertDataContract);
 app.use('/api/contracts', authMiddleware, getContractDetail);
 app.use('/api/contracts', authMiddleware, uploadFile);

@@ -16,7 +16,7 @@ const ejecutarQuery = (sql, values) => {
   });
 };
 
-// Normaliza cabeceras (ignora mayúsculas, espacios, puntos, º)
+// Normaliza cabeceras
 const normalize = (str) =>
   str
     ? str
@@ -33,12 +33,42 @@ const getKey = (row, target) => {
   return Object.keys(row).find((key) => normalize(key) === targetNorm);
 };
 
-// Función principal para subir archivo Orden de Compra
+// Subir archivo Orden de Compra
 const uploadExcelOrder = async (req, res) => {
   try {
+
     if (!req.file) {
       return res.status(400).json({ error: "No se proporcionó un archivo." });
     }
+
+    const consecutivo = req.body.consecutivo;
+    const tipo_doc = req.body.tipo_doc || "Orden De Compra";
+
+    if (!consecutivo) {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({
+        error: "Debe proporcionar el consecutivo del documento."
+      });
+    }
+
+    // Validar consecutivo
+    const existe = await ejecutarQuery(
+      `SELECT COUNT(*) AS total
+       FROM item_documentos
+       WHERE tipo_doc = ?
+       AND nombre_campo_doc = 'consecutivo'
+       AND valor_campo_doc = ?`,
+      [tipo_doc, consecutivo]
+    );
+
+    if (existe[0].total > 0) {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({
+        error: "Ya existe un documento registrado con este mismo consecutivo. Por favor, verifica el número e intenta nuevamente."
+      });
+    }
+
+    const numdoc = consecutivo;
 
     const workbook = XLSX.readFile(req.file.path);
     const firstSheetName = workbook.SheetNames[0];
@@ -46,7 +76,10 @@ const uploadExcelOrder = async (req, res) => {
     const data = XLSX.utils.sheet_to_json(sheet);
 
     if (!data || data.length === 0) {
-      return res.status(400).json({ error: "El archivo de Orden de Compra está vacío." });
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({
+        error: "El archivo de Orden de Compra está vacío."
+      });
     }
 
     const expectedHeaders = [
@@ -54,39 +87,46 @@ const uploadExcelOrder = async (req, res) => {
       "ITEM",
       "ELEMENTO",
       "DESCRIPCION",
-      "UM",
+      "UBICACION",
       "CANTIDAD",
-      "PROVEEDOR",
+      "UM",
+      "BASE",
+      "ALTURA", 
+      "TOTAL",
+      "OTROS",
+      "PROVEDOR"
     ];
 
     const headersFromFile = Object.keys(data[0]).map((h) => normalize(h));
+
     const isValid = expectedHeaders.every(
       (h) => headersFromFile.includes(normalize(h))
     );
 
     if (!isValid) {
+      fs.unlinkSync(req.file.path);
       return res.status(400).json({
-        error: "Formato inválido. El archivo no corresponde a una Orden de Compra.",
+        error: "Formato inválido. El archivo no corresponde a una Orden de Compra."
       });
     }
 
-    // Obtener número de contrato de la primera fila
-    const numdoc = data[0][getKey(data[0], "CONTRATO")] || "SIN_NUMDOC";
-    const tipo_doc = req.body.tipo_doc || "Orden De Compra";
-
-    console.log("Número de contrato detectado:", numdoc);
-
     for (const row of data) {
+
       const contrato = row[getKey(row, "CONTRATO")];
       const item = row[getKey(row, "ITEM")];
       const elemento = row[getKey(row, "ELEMENTO")];
       const descripcion = row[getKey(row, "DESCRIPCION")];
-      const um = row[getKey(row, "UM")];
+      const ubicacion = row[getKey(row, "UBICACION")];
       const cantidad = row[getKey(row, "CANTIDAD")];
-      const proveedor = row[getKey(row, "PROVEEDOR")];
+      const um = row[getKey(row, "UM")];
+      const base = row[getKey(row, "BASE")];
+      const altura = row[getKey(row, "ALTURA")];
+      const total = row[getKey(row, "TOTAL")];
+      const otros = row[getKey(row, "OTROS")];
+      const proveedor = row[getKey(row, "PROVEDOR")];
 
       if (!item || !descripcion) {
-        console.warn("Fila ignorada (incompleta):", row);
+        console.warn("Fila ignorada:", row);
         continue;
       }
 
@@ -95,27 +135,38 @@ const uploadExcelOrder = async (req, res) => {
         item,
         elemento,
         descripcion,
+        ubicacion,
         um,
+        base,
+        altura,
+        total,
+        otros,
         cantidad,
         proveedor,
         tipo_doc,
-        numdoc,
+        numdoc
       ];
 
-      await ejecutarQuery(`CALL sp_insertar_orden_compra(?, ?, ?, ?, ?, ?, ?, ?, ?)`, values);
+      await ejecutarQuery(
+        `CALL sp_insertar_orden_compra(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        values
+      );
     }
 
     fs.unlinkSync(req.file.path);
+
     res.status(200).json({
-      message: "Archivo de Orden de Compra procesado e insertado correctamente.",
+      message: "Archivo de Orden de Compra procesado e insertado correctamente."
     });
-    console.log('orden cargada correctamtnte', numdoc);
-    
+
+    console.log("Orden cargada correctamente:", numdoc);
+
   } catch (error) {
-    console.error("Error al procesar archivo de Orden de Compra:", error);
+    console.error("Error al procesar archivo:", error);
+
     res.status(500).json({
       error: "Error al procesar archivo de Orden de Compra",
-      detalle: error.message,
+      detalle: error.message
     });
   }
 };

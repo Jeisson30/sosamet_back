@@ -18,9 +18,14 @@ const loginUser = (req, res) => {
 
   db.query('CALL sp_login_usuario(?, ?)', [p_email, p_password], (err, results) => {
     if (err) {
+      console.error("ERROR SP LOGIN:", err);
+    
       return res.status(500).json({
         code: 0,
-        message: 'Error al ejecutar el procedimiento',
+        message: err.message,
+        sqlMessage: err.sqlMessage,
+        sqlState: err.sqlState,
+        codeSql: err.code
       });
     }
 
@@ -35,6 +40,7 @@ const loginUser = (req, res) => {
 
     const { resultado, id_usuario, password_db, nombre, apellido, id_perfil, nombre_perfil, id_rol  } = result;
 
+    console.log("RESULTADO SP:", result);
     switch (resultado) {
       case 'USUARIO_NO_EXISTE':
         return res.status(404).json({

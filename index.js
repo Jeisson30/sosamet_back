@@ -31,6 +31,8 @@ const uploadFileIva = require('./src/routes/contracts/uploadFilesIva.routes')
 const uploadExcelOrder = require('./src/routes/contracts/uploadFilesBuyOrder.routes')
 const consultPurchaseOrders = require('./src/routes/contracts/consultPurchaseOrders.routes')
 const consultRemissions = require('./src/routes/contracts/consultRemissions.routes')
+const consultContracts = require('./src/routes/contracts/consultContracts.routes')
+const consultAsistencia = require('./src/routes/contracts/consultAsistencia.routes')
 const uploadExcelRemisiones = require('./src/routes/contracts/uploadFilesRemisiones.routes')
 const uploadExcelActasPago = require('./src/routes/contracts/uploadFilesActasPago.rutes')
 const getCompanies = require('./src/routes/contracts/getCompanies.routes');
@@ -42,6 +44,7 @@ const catalogRoutes = require('./src/routes/catalog.routes');
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1);
 
 const allowedOrigins = [
   'http://localhost:4200',
@@ -104,6 +107,8 @@ app.use('/api/contracts/getTypeContracts', authMiddleware, typeContracts);
 app.use('/api/contracts/getTypeFields', authMiddleware, typeFields);
 app.use('/api/contracts/purchase-orders', authMiddleware, consultPurchaseOrders);
 app.use('/api/contracts/remissions', authMiddleware, consultRemissions);
+app.use('/api/contracts/consult-contracts', authMiddleware, consultContracts);
+app.use('/api/contracts/consult-asistencia', authMiddleware, consultAsistencia);
 app.use('/api/contracts', authMiddleware, insertDataContract);
 app.use('/api/contracts', authMiddleware, getContractDetail);
 app.use('/api/contracts', authMiddleware, uploadFile);

@@ -1,6 +1,7 @@
 const XLSX = require("xlsx");
 const fs = require("fs");
 const db = require("../../config/db");
+const { notifyDocumentCreated } = require('../../utils/documentCreatedEmail');
 
 // ===============================
 // HELPERS PROFESIONALES
@@ -179,6 +180,12 @@ const uploadExcelActasPago = async (req, res) => {
       totalDocumento
     });
 
+    // Best-effort: correo informativo (carga masiva)
+    void notifyDocumentCreated({
+      reqUser: req.user,
+      tipo_doc,
+      numerodoc: '',
+    });
   } catch (error) {
     console.error("Error:", error);
 

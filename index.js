@@ -40,6 +40,8 @@ const getAllUsers = require('./src/routes/gestion/order-work/getAllusers.routes'
 const insertLiquidationCourts = require('./src/routes/gestion/liquidation-courts/insertLiquidationCourts.routes')
 const insertOrderWork = require('./src/routes/gestion/order-work/insertOrderWork.routes')
 const catalogRoutes = require('./src/routes/catalog.routes');
+const reportRoutes = require('./src/routes/reports/reports.routes');
+const { requireAdmin } = require('./src/middlewares/admin.middleware');
 
 dotenv.config();
 
@@ -122,6 +124,7 @@ app.use('/api/gestion', authMiddleware, getAllUsers);
 app.use('/api/gestion/liquidation-courts', authMiddleware, insertLiquidationCourts);
 app.use('/api/gestion/order-work', authMiddleware, insertOrderWork);
 app.use('/api/catalog', authMiddleware, catalogRoutes);
+app.use('/api/reports', authMiddleware, requireAdmin, reportRoutes);
 
 // 🔹 Middleware global de errores (después de todas las rutas)
 app.use(errorHandler);

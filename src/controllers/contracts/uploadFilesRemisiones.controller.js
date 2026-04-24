@@ -1,6 +1,7 @@
 const XLSX = require("xlsx");
 const fs = require("fs");
 const db = require("../../config/db");
+const { notifyDocumentCreated } = require('../../utils/documentCreatedEmail');
 
 // Función para ejecutar queries con promesas
 const ejecutarQuery = (sql, values) => {
@@ -78,9 +79,18 @@ const uploadExcelRemisiones = async (req, res) => {
 
       fs.unlinkSync(req.file.path);
 
-      return res.status(200).json({
+      const response = res.status(200).json({
         message: "Archivo de remisiones procesado correctamente.",
       });
+
+      // Best-effort: correo informativo (carga masiva)
+      void notifyDocumentCreated({
+        reqUser: req.user,
+        tipo_doc,
+        numerodoc: '',
+      });
+
+      return response;
     }
     // CASO 2: VIENEN DATOS MANUALES
     if (req.body.detalle_remision) {
@@ -156,10 +166,19 @@ const uploadExcelRemisiones = async (req, res) => {
         );
       }
 
-      return res.status(200).json({
+      const response = res.status(200).json({
         message: "Remisión manual insertada correctamente.",
         numerodoc
       });
+
+      // Best-effort: correo informativo (manual)
+      void notifyDocumentCreated({
+        reqUser: req.user,
+        tipo_doc: tipo_doc_rem || tipo_doc,
+        numerodoc,
+      });
+
+      return response;
     }
 
 

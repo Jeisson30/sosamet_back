@@ -1,6 +1,7 @@
 const XLSX = require("xlsx");
 const fs = require("fs");
 const db = require("../../config/db");
+const { notifyDocumentCreated } = require('../../utils/documentCreatedEmail');
 
 // Ejecuta query con promesa
 const ejecutarQuery = (sql, values) => {
@@ -114,6 +115,13 @@ const uploadExcelActasPago = async (req, res) => {
 
     res.status(200).json({
       message: "✅ Archivo de Actas de Pago procesado e insertado correctamente.",
+    });
+
+    // Best-effort: correo informativo (carga masiva)
+    void notifyDocumentCreated({
+      reqUser: req.user,
+      tipo_doc,
+      numerodoc: '',
     });
   } catch (error) {
     console.error("❌ Error al procesar archivo de Actas de Pago:", error);

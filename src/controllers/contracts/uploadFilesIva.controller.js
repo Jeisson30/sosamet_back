@@ -1,6 +1,7 @@
 const XLSX = require("xlsx");
 const fs = require("fs");
 const db = require("../../config/db");
+const { notifyDocumentCreated } = require('../../utils/documentCreatedEmail');
 
 // Función para ejecutar queries con promesas
 const ejecutarQuery = (sql, values) => {
@@ -119,6 +120,13 @@ const uploadExcelIVA = async (req, res) => {
     res
       .status(200)
       .json({ message: "Archivo IVA procesado y datos insertados correctamente." });
+
+    // Best-effort: correo informativo (carga masiva IVA)
+    void notifyDocumentCreated({
+      reqUser: req.user,
+      tipo_doc,
+      numerodoc: numdoc,
+    });
   } catch (error) {
     console.error("Error al procesar archivo IVA:", error);
     res.status(500).json({

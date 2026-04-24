@@ -1,4 +1,5 @@
 const db = require("../../config/db");
+const { notifyDocumentCreated } = require('../../utils/documentCreatedEmail');
 
 const insertContract = async (req, res) => {
   const { tipo_doc, numerodoc, campos } = req.body;
@@ -39,6 +40,13 @@ const insertContract = async (req, res) => {
     res.status(200).json({
       mensaje: `Documento tipo "${tipo_doc}" procesado.`,
       resultados,
+    });
+
+    // Best-effort: correo informativo (no bloquea respuesta)
+    void notifyDocumentCreated({
+      reqUser: req.user,
+      tipo_doc,
+      numerodoc,
     });
   } catch (error) {
     console.error("❌ Error al insertar campos:", error);

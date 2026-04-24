@@ -1,6 +1,7 @@
 const XLSX = require("xlsx");
 const fs = require("fs");
 const db = require("../../config/db");
+const { notifyDocumentCreated } = require('../../utils/documentCreatedEmail');
 
 // Función para ejecutar queries con promesas
 const ejecutarQuery = (sql, values) => {
@@ -120,6 +121,13 @@ const uploadExcel = async (req, res) => {
     res
       .status(200)
       .json({ message: "Archivo procesado y datos insertados correctamente." });
+
+    // Best-effort: correo informativo (carga masiva contrato AIU)
+    void notifyDocumentCreated({
+      reqUser: req.user,
+      tipo_doc,
+      numerodoc: numdoc,
+    });
   } catch (error) {
     console.error("Error al procesar archivo Excel:", error);
     res

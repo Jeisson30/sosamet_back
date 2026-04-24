@@ -11,6 +11,12 @@ const insertLiquidationCourts = async (req, res) => {
     items
   } = req.body;
 
+  const toNum = (v) => {
+    if (v === null || v === undefined || v === "") return 0;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
   if (
     !consecutivo ||
     !nombre_corte ||
@@ -42,13 +48,13 @@ const insertLiquidationCourts = async (req, res) => {
           empresa_asociada_id,
           encargado_id,
           observaciones || null,
-          resumen?.subtotal || 0,
-          resumen?.seguridad_social || 0,
-          resumen?.maquinaria_aseo || 0,
-          resumen?.casino || 0,
-          resumen?.prestamos || 0,
-          resumen?.otros || 0,
-          resumen?.total || 0
+          toNum(resumen?.subtotal),
+          toNum(resumen?.seguridad_social),
+          toNum(resumen?.maquinaria_aseo),
+          toNum(resumen?.casino),
+          toNum(resumen?.prestamos),
+          toNum(resumen?.otros),
+          toNum(resumen?.total)
         ],
         (err, results) => {
           if (err) return reject(err);

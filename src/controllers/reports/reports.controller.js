@@ -75,11 +75,54 @@ function callReporteCartera(numeroContrato, cb) {
     const encabezadoRows = Array.isArray(results?.[0]) ? results[0] : [];
     const resumenRows = Array.isArray(results?.[1]) ? results[1] : [];
     const facturacionRows = Array.isArray(results?.[2]) ? results[2] : [];
+    // Algunas versiones del SP retornan un listado adicional (ej. obras activas).
+    const obrasActivasRows = Array.isArray(results?.[3]) ? results[3] : [];
 
     return cb(null, {
       encabezado: encabezadoRows?.[0] ?? null,
       resumen: resumenRows?.[0] ?? null,
       facturacion: facturacionRows ?? [],
+      obras_activas: obrasActivasRows ?? [],
+    });
+  });
+}
+
+function callConsultarContratosFull(params, cb) {
+  // Forzar collation en parámetros texto para evitar:
+  // "Illegal mix of collations ... for operation 'like'"
+  // (la BD usa utf8mb4_general_ci en varias tablas/SP).
+  const q = `
+    CALL SP_ConsultarContratosFull(
+      CONVERT(? USING utf8mb4) COLLATE utf8mb4_general_ci,
+      CONVERT(? USING utf8mb4) COLLATE utf8mb4_general_ci,
+      CONVERT(? USING utf8mb4) COLLATE utf8mb4_general_ci,
+      CONVERT(? USING utf8mb4) COLLATE utf8mb4_general_ci,
+      CONVERT(? USING utf8mb4) COLLATE utf8mb4_general_ci,
+      CONVERT(? USING utf8mb4) COLLATE utf8mb4_general_ci,
+      CONVERT(? USING utf8mb4) COLLATE utf8mb4_general_ci
+    )
+  `;
+  db.query(q, params, (err, results) => {
+    if (err) return cb(err);
+    const rows = results && results[0] ? results[0] : [];
+    return cb(null, rows);
+  });
+}
+
+function callReporteCarteraAsync(numeroContrato) {
+  return new Promise((resolve, reject) => {
+    callReporteCartera(numeroContrato, (err, data) => {
+      if (err) return reject(err);
+      return resolve(data);
+    });
+  });
+}
+
+function callConsultarContratosFullAsync(params) {
+  return new Promise((resolve, reject) => {
+    callConsultarContratosFull(params, (err, rows) => {
+      if (err) return reject(err);
+      return resolve(rows);
     });
   });
 }
@@ -211,6 +254,122 @@ const getCarteraPreview = (req, res) => {
   }
 };
 
+const getObrasActivasPreview = async (req, res) => {
+  try {
+    // Resumen: contratos en estado ACTIVO para 2 empresas (1 y 2),
+    // acumulado por constructora/contrato y acumulado de saldos (SP_REPORTE_CARTERA).
+    const buscar = req.query?.buscar ? String(req.query.buscar).trim() : null;
+    const constructora = req.query?.constructora
+      ? String(req.query.constructora).trim()
+      : null;
+    const proyecto = req.query?.proyecto ? String(req.query.proyecto).trim() : null;
+
+    const columns = [
+      { field: 'proyecto', header: 'Proyecto' },
+      { field: 'numero_contrato', header: 'No. contrato' },
+      { field: 'tipo', header: 'Tipo' },
+      { field: 'objeto', header: 'Objeto' },
+      { field: 'fecha_inicio', header: 'Fecha inicio' },
+      { field: 'fecha_finalizacion', header: 'Fecha finalización' },
+      { field: 'valor_contratado', header: 'Valor contratado' },
+      { field: 'saldo', header: 'Saldo' },
+      { field: 'constructora', header: 'Constructora' },
+      { field: 'empresa_asociada', header: 'Empresa asociada' },
+    ];
+
+    const baseParams = [
+      buscar && buscar !== '' ? buscar : null,
+      'ACTIVO',
+      null,
+      null,
+      null, // empresa_asociada (lo seteamos por empresa)
+      constructora && constructora !== '' ? constructora : null,
+      proyecto && proyecto !== '' ? proyecto : null,
+    ];
+
+    const [rowsEmp1, rowsEmp2] = await Promise.all([
+      callConsultarContratosFullAsync([
+        ...baseParams.slice(0, 4),
+        '1',
+        baseParams[5],
+        baseParams[6],
+      ]),
+      callConsultarContratosFullAsync([
+        ...baseParams.slice(0, 4),
+        '2',
+        baseParams[5],
+        baseParams[6],
+      ]),
+    ]);
+
+    const all = [...(rowsEmp1 || []), ...(rowsEmp2 || [])];
+
+    // Dedupe por numero_contrato (un contrato puede salir repetido por detalle).
+    const byContrato = new Map();
+    for (const r of all) {
+      const num = r?.numero_contrato ? String(r.numero_contrato).trim() : '';
+      if (!num) continue;
+      if (!byContrato.has(num)) byContrato.set(num, r);
+    }
+
+    // Para cada contrato, consultar saldo desde SP_REPORTE_CARTERA (resultset #2: resumen.saldo_contrato).
+    const contratos = Array.from(byContrato.values());
+    const carteraMap = new Map();
+    await Promise.all(
+      contratos.map(async (c) => {
+        const num = String(c.numero_contrato).trim();
+        try {
+          const data = await callReporteCarteraAsync(num);
+          carteraMap.set(num, data);
+        } catch (e) {
+          // Si falla un contrato, no tumbar todo el reporte.
+          carteraMap.set(num, null);
+        }
+      })
+    );
+
+    const rows = contratos.map((c) => {
+      const num = String(c.numero_contrato).trim();
+      const cartera = carteraMap.get(num);
+      const encabezado = cartera?.encabezado ?? null;
+      const resumen = cartera?.resumen ?? null;
+
+      return {
+        proyecto: c.proyecto ?? encabezado?.proyecto ?? null,
+        numero_contrato: num,
+        tipo: c.tipo_contrato ?? null,
+        objeto: c.descripcion ?? null,
+        fecha_inicio: c.fecha_inicio ?? null,
+        fecha_finalizacion: c.fecha_fin ?? null,
+        valor_contratado: c.valor_contrato ?? resumen?.valor_contrato ?? null,
+        saldo: resumen?.saldo_contrato ?? null,
+        constructora: c.empresa ?? encabezado?.empresa ?? null,
+        empresa_asociada: c.empresa_asociada ?? null,
+      };
+    });
+
+    return res.status(200).json({
+      code: 1,
+      message: 'OK',
+      data: {
+        columns,
+        rows,
+        meta: {
+          reporte: 'Obras activas',
+          estado: 'ACTIVO',
+          empresas: ['1', '2'],
+        },
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      code: 0,
+      message: 'Error al generar la vista previa del informe de obras activas.',
+      error: err?.message,
+    });
+  }
+};
+
 const exportProductionByContract = (req, res) => {
   const format = String(req.query.format || 'xlsx').toLowerCase();
   if (format !== 'xlsx') {
@@ -312,4 +471,5 @@ module.exports = {
   getProductionByContractPreview,
   exportProductionByContract,
   getCarteraPreview,
+  getObrasActivasPreview,
 };

@@ -18,9 +18,17 @@ const loginUser = (req, res) => {
 
   db.query('CALL sp_login_usuario(?, ?)', [p_email, p_password], (err, results) => {
     if (err) {
+      
+      const isProd = String(process.env.NODE_ENV || '')
+        .toLowerCase()
+        .includes('production');
+      // eslint-disable-next-line no-console
+      console.error('Error en sp_login_usuario:', err);
       return res.status(500).json({
         code: 0,
-        message: 'Error al ejecutar el procedimiento',
+        message: isProd
+          ? 'Error al ejecutar el procedimiento'
+          : err.sqlMessage || err.message || 'Error al ejecutar el procedimiento',
       });
     }
 

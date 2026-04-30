@@ -2,6 +2,9 @@ const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const rateLimit = require("express-rate-limit");
+// Cargar .env ANTES de cualquier otro require (db, rutas, controllers).
+dotenv.config({ override: true });
+
 const db = require("./src/config/db");
 
 // 🔹 Swagger
@@ -42,8 +45,6 @@ const insertOrderWork = require('./src/routes/gestion/order-work/insertOrderWork
 const catalogRoutes = require('./src/routes/catalog.routes');
 const reportRoutes = require('./src/routes/reports/reports.routes');
 const { requireAdmin } = require('./src/middlewares/admin.middleware');
-
-dotenv.config();
 
 const app = express();
 app.set('trust proxy', 1);
@@ -95,7 +96,7 @@ app.get("/", (req, res) => {
 
 // Rutas públicas (sin JWT)
 app.use('/api/auth/changePassword', changePassword);
-app.use('/api/auth/loginUser', loginLimiter, loginUser);
+app.use('/api/auth/loginUser', loginUser);
 
 // Rutas protegidas (requieren Authorization: Bearer <token>)
 app.use("/api/roles", authMiddleware, roleRoutes);

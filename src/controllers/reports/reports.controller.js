@@ -68,23 +68,150 @@ function callReporteContrato(numeroContrato, cb) {
   });
 }
 
-function callReporteCartera(numeroContrato, cb) {
-  db.query('CALL SP_REPORTE_CARTERA(?)', [numeroContrato], (err, results) => {
-    if (err) return cb(err);
+function normalizeCarteraSpRow(r) {
+  if (!r || typeof r !== 'object') return null;
+  return {
+    constructora: r.constructora ?? null,
+    proyecto: r.proyecto ?? null,
+    contrato: r.contrato ?? null,
+    rete_garantia: r.rete_garantia ?? null,
+    saldo_contrato: r.saldo_contrato ?? null,
+    ultimo_corte: r.ultimo_corte ?? null,
+    documento: r.documento ?? null,
+    valor: r.valor ?? null,
+    saldo: r.saldo ?? null,
+    dias: r.dias ?? null,
+    tipo_bloque: r.tipo_bloque ?? null,
+  };
+}
 
-    const encabezadoRows = Array.isArray(results?.[0]) ? results[0] : [];
-    const resumenRows = Array.isArray(results?.[1]) ? results[1] : [];
-    const facturacionRows = Array.isArray(results?.[2]) ? results[2] : [];
-    // Algunas versiones del SP retornan un listado adicional (ej. obras activas).
-    const obrasActivasRows = Array.isArray(results?.[3]) ? results[3] : [];
+/**
+ * SP_REPORTE_CARTERA devuelve un único result set: filas RETE | FACT | TOTAL_CONSTRUCTORA.
+ */
+function buildCarteraGrupos(rawRows) {
+  const rows = (rawRows || [])
+    .map(normalizeCarteraSpRow)
+    .filter(Boolean);
+  const byCons = new Map();
+  for (const r of rows) {
+    const key = String(r.constructora ?? '').trim() || '(Sin constructora)';
+    if (!byCons.has(key)) {
+      byCons.set(key, {
+        constructora: key,
+        rete: [],
+        facturacion: [],
+        total_constructora: null,
+      });
+    }
+    const g = byCons.get(key);
+    const tipo = String(r.tipo_bloque ?? '').toUpperCase();
+    if (tipo === 'RETE') g.rete.push(r);
+    else if (tipo === 'FACT') g.facturacion.push(r);
+    else if (tipo === 'TOTAL_CONSTRUCTORA') g.total_constructora = r;
+  }
+  return Array.from(byCons.values()).sort((a, b) =>
+    a.constructora.localeCompare(b.constructora, 'es', { sensitivity: 'base' })
+  );
+}
 
-    return cb(null, {
-      encabezado: encabezadoRows?.[0] ?? null,
-      resumen: resumenRows?.[0] ?? null,
-      facturacion: facturacionRows ?? [],
-      obras_activas: obrasActivasRows ?? [],
-    });
-  });
+/** Saldo / rete por un contrato (obras activas y compatibilidad). */
+function buildLegacyCarteraFromRaw(rawRows, numeroContrato) {
+  const num = numeroContrato ? String(numeroContrato).trim() : '';
+  const rows = (rawRows || [])
+    .map(normalizeCarteraSpRow)
+    .filter(Boolean);
+  let reteRows = rows.filter(
+    (r) => String(r.tipo_bloque ?? '').toUpperCase() === 'RETE'
+  );
+  if (num) {
+    reteRows = reteRows.filter((r) => String(r.contrato ?? '').trim() === num);
+  }
+  const row = reteRows[0] ?? null;
+
+  let factRows = rows.filter(
+    (r) => String(r.tipo_bloque ?? '').toUpperCase() === 'FACT'
+  );
+  if (num) {
+    factRows = factRows.filter((r) => String(r.contrato ?? '').trim() === num);
+  }
+
+  const encabezado = row
+    ? {
+        empresa: row.constructora,
+        proyecto: row.proyecto,
+        numero_contrato: row.contrato,
+        dias: row.dias,
+      }
+    : null;
+
+  const resumen = row
+    ? {
+        rete_garantia: row.rete_garantia,
+        saldo_contrato: row.saldo_contrato,
+        ultimo_corte: row.ultimo_corte,
+      }
+    : null;
+
+  const facturacion = factRows.map((r) => ({
+    proyecto: r.proyecto ?? null,
+    numero_contrato: r.contrato ?? null,
+    no_documento: r.documento ?? null,
+    valor: r.valor ?? null,
+    saldo: r.saldo ?? null,
+    estado: r.dias != null && r.dias !== '' ? String(r.dias) : null,
+  }));
+
+  return {
+    encabezado,
+    resumen,
+    facturacion,
+    obras_activas: [],
+  };
+}
+
+function callReporteCartera(opts, cb) {
+  const numero =
+    opts?.numero_contrato && String(opts.numero_contrato).trim() !== ''
+      ? String(opts.numero_contrato).trim()
+      : null;
+  const empresaAsoc =
+    opts?.empresa_asociada != null && String(opts.empresa_asociada).trim() !== ''
+      ? String(opts.empresa_asociada).trim()
+      : null;
+  const fechaDesde =
+    opts?.fecha_desde && String(opts.fecha_desde).trim() !== ''
+      ? String(opts.fecha_desde).trim()
+      : null;
+  const fechaHasta =
+    opts?.fecha_hasta && String(opts.fecha_hasta).trim() !== ''
+      ? String(opts.fecha_hasta).trim()
+      : null;
+  const constructora =
+    opts?.constructora != null && String(opts.constructora).trim() !== ''
+      ? String(opts.constructora).trim()
+      : null;
+  const proyecto =
+    opts?.proyecto != null && String(opts.proyecto).trim() !== ''
+      ? String(opts.proyecto).trim()
+      : null;
+
+  db.query(
+    'CALL SP_REPORTE_CARTERA(?, ?, ?, ?, ?, ?)',
+    [numero, empresaAsoc, fechaDesde, fechaHasta, constructora, proyecto],
+    (err, results) => {
+      if (err) return cb(err);
+
+      const rawRows = Array.isArray(results?.[0]) ? results[0] : [];
+      const grupos = buildCarteraGrupos(rawRows);
+      const legacy = buildLegacyCarteraFromRaw(rawRows, numero);
+
+      return cb(null, {
+        raw: rawRows,
+        grupos,
+        ...legacy,
+      });
+    }
+  );
 }
 
 function callConsultarContratosFull(params, cb) {
@@ -111,10 +238,13 @@ function callConsultarContratosFull(params, cb) {
 
 function callReporteCarteraAsync(numeroContrato) {
   return new Promise((resolve, reject) => {
-    callReporteCartera(numeroContrato, (err, data) => {
-      if (err) return reject(err);
-      return resolve(data);
-    });
+    callReporteCartera(
+      { numero_contrato: numeroContrato },
+      (err, data) => {
+        if (err) return reject(err);
+        return resolve(data);
+      }
+    );
   });
 }
 
@@ -194,15 +324,30 @@ const getCarteraPreview = (req, res) => {
     const numeroContrato = req.query?.numero_contrato
       ? String(req.query.numero_contrato).trim()
       : '';
+    const empresaAsociada = req.query?.empresa_asociada
+      ? String(req.query.empresa_asociada).trim()
+      : '';
+    const fechaDesde = req.query?.fecha_desde
+      ? String(req.query.fecha_desde).trim()
+      : '';
+    const fechaHasta = req.query?.fecha_hasta
+      ? String(req.query.fecha_hasta).trim()
+      : '';
+    const constructora = req.query?.constructora
+      ? String(req.query.constructora).trim()
+      : '';
+    const proyecto = req.query?.proyecto ? String(req.query.proyecto).trim() : '';
 
-    if (!numeroContrato) {
-      return res.status(400).json({
-        code: 0,
-        message: 'numero_contrato es obligatorio.',
-      });
-    }
+    const opts = {
+      numero_contrato: numeroContrato || null,
+      empresa_asociada: empresaAsociada || null,
+      fecha_desde: fechaDesde || null,
+      fecha_hasta: fechaHasta || null,
+      constructora: constructora || null,
+      proyecto: proyecto || null,
+    };
 
-    return callReporteCartera(numeroContrato, (spErr, data) => {
+    return callReporteCartera(opts, (spErr, data) => {
       if (spErr) {
         const { msg, isNotFound } = normalizeSpError(spErr);
         return res.status(isNotFound ? 400 : 500).json({
@@ -211,36 +356,41 @@ const getCarteraPreview = (req, res) => {
         });
       }
 
+      const flatFact = (data.grupos || []).flatMap((g) =>
+        (g.facturacion || []).map((r) => ({
+          constructora: g.constructora,
+          proyecto: r.proyecto,
+          numero_contrato: r.contrato,
+          no_documento: r.documento,
+          valor: r.valor,
+          saldo: r.saldo,
+          estado: r.dias != null && r.dias !== '' ? String(r.dias) : null,
+        }))
+      );
+
       const columns = [
+        { field: 'constructora', header: 'Constructora' },
         { field: 'proyecto', header: 'Proyecto' },
         { field: 'numero_contrato', header: 'No. contrato' },
         { field: 'no_documento', header: 'No. documento' },
         { field: 'valor', header: 'Valor' },
         { field: 'saldo', header: 'Saldo' },
-        { field: 'estado', header: 'Estado' },
+        { field: 'estado', header: 'Días' },
       ];
-
-      const rows = (data.facturacion || []).map((r) => ({
-        proyecto: data.encabezado?.proyecto ?? null,
-        numero_contrato: r.numero_contrato ?? numeroContrato,
-        no_documento: r.no_documento ?? r.id ?? null,
-        valor: r.valor ?? r.vr_total_documento ?? null,
-        saldo: r.saldo ?? null,
-        estado: r.estado ?? null,
-      }));
 
       return res.status(200).json({
         code: 1,
         message: 'OK',
         data: {
           columns,
-          rows,
+          rows: flatFact,
           meta: {
             reporte: 'Cartera',
-            numero_contrato: numeroContrato,
+            filtros: opts,
+            grupos: data.grupos || [],
             encabezado: data.encabezado,
             resumen: data.resumen,
-            facturacion: rows,
+            facturacion: data.facturacion || [],
           },
         },
       });

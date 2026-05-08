@@ -3,6 +3,7 @@ const db = require("../../../config/db");
 const insertOrderWork = async (req, res) => {
   const {
     consecutivo,
+    tipo_corte,
     empresa_asociada_id,
     encargado_id,
     fecha_entrega,
@@ -12,6 +13,7 @@ const insertOrderWork = async (req, res) => {
 
   if (
     !consecutivo ||
+    !tipo_corte ||
     !empresa_asociada_id ||
     !encargado_id ||
     !fecha_entrega ||
@@ -47,13 +49,14 @@ const insertOrderWork = async (req, res) => {
     // 🔹 Ejecutar SP cabecera
     const spResult = await new Promise((resolve, reject) => {
       db.query(
-        "CALL sp_insert_order_work(?, ?, ?, ?, ?)",
+        "CALL sp_insert_order_work(?, ?, ?, ?, ?, ?)",
         [
           consecutivo,
           empresa_asociada_id,
           encargado_id,
           fechaMysql, // ✅ fecha corregida
-          observaciones || null
+          observaciones || null,
+          tipo_corte
         ],
         (err, results) => {
           if (err) return reject(err);

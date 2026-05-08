@@ -4,6 +4,7 @@ const insertLiquidationCourts = async (req, res) => {
   const {
     consecutivo,
     nombre_corte,
+    tipo_corte,
     empresa_asociada_id,
     encargado_id,
     observaciones,
@@ -20,6 +21,7 @@ const insertLiquidationCourts = async (req, res) => {
   if (
     !consecutivo ||
     !nombre_corte ||
+    !tipo_corte ||
     !empresa_asociada_id ||
     !encargado_id ||
     !Array.isArray(items)
@@ -41,13 +43,14 @@ const insertLiquidationCourts = async (req, res) => {
     // Ejecutar SP
     const spResult = await new Promise((resolve, reject) => {
       db.query(
-        "CALL sp_insert_liquidacion_corte(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "CALL sp_insert_liquidacion_corte(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
           consecutivo,
           nombre_corte,
           empresa_asociada_id,
           encargado_id,
           observaciones || null,
+          tipo_corte,
           toNum(resumen?.subtotal),
           toNum(resumen?.seguridad_social),
           toNum(resumen?.maquinaria_aseo),

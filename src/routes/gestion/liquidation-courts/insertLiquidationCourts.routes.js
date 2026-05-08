@@ -23,6 +23,7 @@ const { insertLiquidationCourts } = require('../../../controllers/gestion/liquid
  *             required:
  *               - consecutivo
  *               - nombre_corte
+ *               - tipo_corte
  *               - empresa_asociada_id
  *               - encargado_id
  *               - items
@@ -33,6 +34,9 @@ const { insertLiquidationCourts } = require('../../../controllers/gestion/liquid
  *               nombre_corte:
  *                 type: string
  *                 example: "Corte Enero"
+ *               tipo_corte:
+ *                 type: string
+ *                 example: "INSTALACIÓN"
  *               empresa_asociada_id:
  *                 type: integer
  *                 example: 1

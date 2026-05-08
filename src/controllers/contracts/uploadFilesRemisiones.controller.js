@@ -172,10 +172,16 @@ const uploadExcelRemisiones = async (req, res) => {
       });
 
       // Best-effort: correo informativo (manual)
+      // En el correo debe mostrarse el número digitado en "Remisión N°" (remision_material),
+      // no el consecutivo interno RM-... que se usa como llave del documento en BD.
+      const numerodocCorreo =
+        remision_material && String(remision_material).trim()
+          ? String(remision_material).trim()
+          : numerodoc;
       void notifyDocumentCreated({
         reqUser: req.user,
         tipo_doc: tipo_doc_rem || tipo_doc,
-        numerodoc,
+        numerodoc: numerodocCorreo,
       });
 
       return response;

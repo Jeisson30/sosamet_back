@@ -23,6 +23,7 @@ const { insertOrderWork } = require('../../../controllers/gestion/order-work/ins
  *             type: object
  *             required:
  *               - consecutivo
+ *               - tipo_corte
  *               - empresa_asociada_id
  *               - encargado_id
  *               - fecha_entrega
@@ -31,6 +32,9 @@ const { insertOrderWork } = require('../../../controllers/gestion/order-work/ins
  *               consecutivo:
  *                 type: string
  *                 example: "OT-001"
+ *               tipo_corte:
+ *                 type: string
+ *                 example: "FABRICACIÓN"
  *               empresa_asociada_id:
  *                 type: integer
  *                 example: 1

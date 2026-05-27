@@ -119,6 +119,33 @@ const uploadExcelRemisiones = async (req, res) => {
         return res.status(400).json({ error: "La empresa asociada es obligatoria." });
       }
 
+      const remisionMaterialTrim =
+        remision_material != null ? String(remision_material).trim() : "";
+
+      if (!remisionMaterialTrim) {
+        return res.status(400).json({ error: "El número de remisión (remision_material) es obligatorio." });
+      }
+
+      // No permitir insertar si ya existe el mismo número de remisión en BD
+      const existing = await ejecutarQuery(
+        `SELECT numerodoc
+           FROM sosamet.item_documentos
+          WHERE nombre_campo_doc = 'remision_material'
+            AND TRIM(valor_campo_doc) = ?
+          LIMIT 1`,
+        [remisionMaterialTrim]
+      );
+
+      // mysql2 puede devolver RowDataPacket[]; mysql (callback) devuelve array directo.
+      const existingRow =
+        Array.isArray(existing) && existing.length ? existing[0] : null;
+
+      if (existingRow && existingRow.numerodoc) {
+        return res.status(409).json({
+          error: `Ya existe una remisión con el número ${remisionMaterialTrim}.`,
+        });
+      }
+
       // Generar número documento
       const numerodoc = `RM-${Date.now()}`;
 
@@ -126,7 +153,7 @@ const uploadExcelRemisiones = async (req, res) => {
       const campos = [
         { nombre: "tipo_doc_rem", valor: tipo_doc_rem },
         { nombre: "numero_contrato", valor: numero_contrato },
-        { nombre: "remision_material", valor: remision_material },
+        { nombre: "remision_material", valor: remisionMaterialTrim },
         { nombre: "fecha_remision", valor: fecha_remision },
         { nombre: "cliente", valor: cliente },
         { nombre: "proyecto", valor: proyecto },
@@ -175,8 +202,8 @@ const uploadExcelRemisiones = async (req, res) => {
       // En el correo debe mostrarse el número digitado en "Remisión N°" (remision_material),
       // no el consecutivo interno RM-... que se usa como llave del documento en BD.
       const numerodocCorreo =
-        remision_material && String(remision_material).trim()
-          ? String(remision_material).trim()
+        remisionMaterialTrim
+          ? remisionMaterialTrim
           : numerodoc;
       void notifyDocumentCreated({
         reqUser: req.user,

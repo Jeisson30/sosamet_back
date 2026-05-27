@@ -28,6 +28,7 @@ const loginUser = require('./src/routes/auth/loginUser.routes')
 const typeContracts = require('./src/routes/contracts/getTypeContracts.routes')
 const typeFields = require('./src/routes/contracts/getTypeFields.routes')
 const insertDataContract = require('./src/routes/contracts/insertContract.routes')
+const insertContractWithPlano = require('./src/routes/contracts/insertContractWithPlano.routes')
 const getContractDetail = require('./src/routes/contracts/contractDetail.routes')
 const uploadFile = require('./src/routes/contracts/uploadFilesContracts.routes')
 const uploadFileIva = require('./src/routes/contracts/uploadFilesIva.routes')
@@ -113,6 +114,7 @@ app.use('/api/contracts/remissions', authMiddleware, consultRemissions);
 app.use('/api/contracts/consult-contracts', authMiddleware, consultContracts);
 app.use('/api/contracts/consult-asistencia', authMiddleware, consultAsistencia);
 app.use('/api/contracts', authMiddleware, insertDataContract);
+app.use('/api/contracts', authMiddleware, insertContractWithPlano);
 app.use('/api/contracts', authMiddleware, getContractDetail);
 app.use('/api/contracts', authMiddleware, uploadFile);
 app.use('/api/contracts', authMiddleware, uploadFileIva);

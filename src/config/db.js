@@ -2,14 +2,17 @@ const mysql = require('mysql2');
 const dotenv = require('dotenv');
 dotenv.config({ override: true });
 
-const connection = mysql.createConnection({
+const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
 });
 
-connection.connect((err) => {
+pool.getConnection((err, connection) => {
   if (err) {
     console.error('Error conectando a la base de datos:', err);
     return;
@@ -17,19 +20,17 @@ connection.connect((err) => {
   console.log(
     `//===== Conectado a MySQL (${process.env.DB_HOST})  =====  \\`
   );
+  connection.release();
 });
 
-if (process.env.NODE_ENV !== 'production') {
-  connection.query(
-    "SET NAMES utf8mb4 COLLATE utf8mb4_general_ci",
-    (err) => {
-      if (err) {
-        console.error('Error configurando collation:', err);
-      } else {
-        console.log('✅ Collation configurada a utf8mb4_general_ci');
+pool.on('connection', (connection) => {
+  if (process.env.NODE_ENV !== 'production') {
+    connection.query('SET NAMES utf8mb4 COLLATE utf8mb4_general_ci', (setErr) => {
+      if (setErr) {
+        console.error('Error configurando collation:', setErr);
       }
-    }
-  );
-}
+    });
+  }
+});
 
-module.exports = connection;
+module.exports = pool;

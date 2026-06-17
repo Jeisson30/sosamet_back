@@ -44,6 +44,8 @@ const getAllUsers = require('./src/routes/gestion/order-work/getAllusers.routes'
 const insertLiquidationCourts = require('./src/routes/gestion/liquidation-courts/insertLiquidationCourts.routes')
 const insertOrderWork = require('./src/routes/gestion/order-work/insertOrderWork.routes')
 const catalogRoutes = require('./src/routes/catalog.routes');
+const administracionRoutes = require('./src/routes/administracion/administracion.routes');
+const { requireAdminOrSupervisor } = require('./src/middlewares/adminOrSupervisor.middleware');
 const reportRoutes = require('./src/routes/reports/reports.routes');
 const { requireAdmin } = require('./src/middlewares/admin.middleware');
 
@@ -69,7 +71,7 @@ const allowedOrigins = [
       }
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
   }));
   
@@ -127,6 +129,12 @@ app.use('/api/gestion', authMiddleware, getAllUsers);
 app.use('/api/gestion/liquidation-courts', authMiddleware, insertLiquidationCourts);
 app.use('/api/gestion/order-work', authMiddleware, insertOrderWork);
 app.use('/api/catalog', authMiddleware, catalogRoutes);
+app.use(
+  '/api/administracion',
+  authMiddleware,
+  requireAdminOrSupervisor,
+  administracionRoutes
+);
 app.use('/api/reports', authMiddleware, requireAdmin, reportRoutes);
 
 // 🔹 Middleware global de errores (después de todas las rutas)

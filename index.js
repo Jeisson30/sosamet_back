@@ -21,6 +21,7 @@ const userRoutes = require('./src/routes/user/createUser.routes')
 const getUsers = require('./src/routes/user/getUser.routes')
 const changeStateUsers = require('./src/routes/user/changeStateUser.routes')
 const updateUsers = require('./src/routes/user/updateUser.routes')
+const deleteUsers = require('./src/routes/user/deleteUser.routes')
 
 const changePassword = require('./src/routes/auth/changePassword.routes')
 const loginUser = require('./src/routes/auth/loginUser.routes')
@@ -108,6 +109,7 @@ app.use("/api/createUser", authMiddleware, userRoutes);
 app.use('/api/getUsers', authMiddleware, getUsers);
 app.use('/api/changeStateUser', authMiddleware, changeStateUsers);
 app.use('/api/updateUser', authMiddleware, updateUsers);
+app.use('/api/deleteUser', authMiddleware, deleteUsers);
 
 app.use('/api/contracts/getTypeContracts', authMiddleware, typeContracts);
 app.use('/api/contracts/getTypeFields', authMiddleware, typeFields);

@@ -40,6 +40,10 @@ const consultContracts = require('./src/routes/contracts/consultContracts.routes
 const consultAsistencia = require('./src/routes/contracts/consultAsistencia.routes')
 const uploadExcelRemisiones = require('./src/routes/contracts/uploadFilesRemisiones.routes')
 const uploadExcelActasPago = require('./src/routes/contracts/uploadFilesActasPago.rutes')
+const insertActasMedidaDetalle = require('./src/routes/contracts/insertActasMedidaDetalle.routes')
+const generarConsecutivo = require('./src/routes/contracts/generarConsecutivo.routes')
+const consultarContratos = require('./src/routes/contracts/consultarContratos.routes')
+const consultActasMedida = require('./src/routes/contracts/consultActasMedida.routes')
 const getCompanies = require('./src/routes/contracts/getCompanies.routes');
 const getAllUsers = require('./src/routes/gestion/order-work/getAllusers.routes')
 const insertLiquidationCourts = require('./src/routes/gestion/liquidation-courts/insertLiquidationCourts.routes')
@@ -115,6 +119,7 @@ app.use('/api/contracts/getTypeContracts', authMiddleware, typeContracts);
 app.use('/api/contracts/getTypeFields', authMiddleware, typeFields);
 app.use('/api/contracts/purchase-orders', authMiddleware, consultPurchaseOrders);
 app.use('/api/contracts/remissions', authMiddleware, consultRemissions);
+app.use('/api/contracts/actas-medida', authMiddleware, consultActasMedida);
 app.use('/api/contracts/consult-contracts', authMiddleware, consultContracts);
 app.use('/api/contracts/consult-asistencia', authMiddleware, consultAsistencia);
 app.use('/api/contracts', authMiddleware, insertDataContract);
@@ -125,6 +130,9 @@ app.use('/api/contracts', authMiddleware, uploadFileIva);
 app.use('/api/contracts', authMiddleware, uploadExcelOrder);
 app.use('/api/contracts', authMiddleware, uploadExcelRemisiones);
 app.use('/api/contracts', authMiddleware, uploadExcelActasPago);
+app.use('/api/contracts', authMiddleware, insertActasMedidaDetalle);
+app.use('/api/contracts', authMiddleware, generarConsecutivo);
+app.use('/api/contracts', authMiddleware, consultarContratos);
 app.use('/api/contracts', authMiddleware, getCompanies);
 
 app.use('/api/gestion', authMiddleware, getAllUsers);

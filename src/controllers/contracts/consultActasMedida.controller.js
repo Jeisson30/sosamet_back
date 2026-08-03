@@ -1,0 +1,224 @@
+const db = require("../../config/db");
+
+const toNull = (v) => {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "string") {
+    const s = v.trim();
+    return s ? s : null;
+  }
+  return v;
+};
+
+const toNumOrNull = (v) => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * Consulta actas de medida vía SP_CONSULTAR_ACTAS_MEDIDA(6 params).
+ * Params: buscar, constructora, proyecto, contrato, fecha_desde, fecha_hasta
+ * (null = sin filtro / trae todo).
+ * Devuelve 2 recordsets: cabecera y detalle.
+ */
+const consultActasMedida = (req, res) => {
+  const {
+    buscar = null,
+    constructora = null,
+    proyecto = null,
+    contrato = null,
+    fecha_desde = null,
+    fecha_hasta = null,
+  } = req.query;
+
+  const params = [
+    toNull(buscar),
+    toNull(constructora),
+    toNull(proyecto),
+    toNull(contrato),
+    toNull(fecha_desde),
+    toNull(fecha_hasta),
+  ];
+
+  db.query(
+    "CALL SP_CONSULTAR_ACTAS_MEDIDA(?, ?, ?, ?, ?, ?)",
+    params,
+    (err, results) => {
+      if (err) {
+        console.error("Error al consultar actas de medida:", err);
+        return res.status(500).json({
+          mensaje: "Error al consultar actas de medida.",
+          error: err.message,
+        });
+      }
+
+      const cabecera = Array.isArray(results?.[0]) ? results[0] : [];
+      const detalle = Array.isArray(results?.[1]) ? results[1] : [];
+
+      return res.status(200).json({
+        cabecera,
+        detalle,
+      });
+    }
+  );
+};
+
+/**
+ * Actualiza acta de medida vía SP_ACTUALIZAR_ACTA_MEDIDA.
+ * p_usuario_modificacion = id del usuario autenticado (JWT).
+ */
+const updateActasMedida = (req, res) => {
+  const body = req.body || {};
+  const consecutivo = String(body.consecutivo ?? "").trim();
+
+  if (!consecutivo) {
+    return res.status(400).json({
+      mensaje: "El consecutivo es obligatorio.",
+    });
+  }
+
+  const usuarioModificacion = Number(
+    req.user?.id_usuario ?? body.usuario_modificacion ?? 0
+  );
+
+  if (!Number.isFinite(usuarioModificacion) || usuarioModificacion <= 0) {
+    return res.status(401).json({
+      mensaje: "No se pudo identificar el usuario de modificación.",
+    });
+  }
+
+  const params = [
+    consecutivo,
+    body.actualizar_cabecera ? 1 : 0,
+    body.actualizar_detalle ? 1 : 0,
+    toNull(body.constructora),
+    toNull(body.proyecto),
+    toNull(body.numero_contrato),
+    toNull(body.fecha_acta),
+    toNull(body.fecha_terminacion),
+    toNull(body.observaciones),
+    toNull(body.tipo_documento),
+    toNull(body.descripcion_general),
+    toNumOrNull(body.id_disenador),
+    toNumOrNull(body.amd_id),
+    toNull(body.item),
+    toNull(body.detalle),
+    toNumOrNull(body.cantidad),
+    toNull(body.unidad_medida),
+    toNumOrNull(body.ancho),
+    toNumOrNull(body.alto),
+    toNull(body.observaciones_detalle),
+    toNull(body.evidencia),
+    usuarioModificacion,
+  ];
+
+  db.query(
+    "CALL SP_ACTUALIZAR_ACTA_MEDIDA(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    params,
+    (err, results) => {
+      if (err) {
+        console.error("Error al actualizar acta de medida:", err);
+        return res.status(500).json({
+          mensaje: "Error al actualizar el acta de medida.",
+          error: err.message,
+        });
+      }
+
+      const row = Array.isArray(results?.[0]) ? results[0][0] : null;
+      return res.status(200).json({
+        mensaje: row?.mensaje || "Acta de medida actualizada correctamente.",
+        resultado: row?.resultado ?? 1,
+      });
+    }
+  );
+};
+
+/**
+ * Elimina acta de medida vía SP_ELIMINAR_ACTA_MEDIDA(consecutivo).
+ */
+const deleteActasMedida = (req, res) => {
+  const consecutivo = String(
+    req.body?.consecutivo ?? req.params?.consecutivo ?? ""
+  ).trim();
+
+  if (!consecutivo) {
+    return res.status(400).json({
+      mensaje: "El consecutivo es obligatorio.",
+    });
+  }
+
+  db.query(
+    "CALL SP_ELIMINAR_ACTA_MEDIDA(?)",
+    [consecutivo],
+    (err, results) => {
+      if (err) {
+        console.error("Error al eliminar acta de medida:", err);
+        const sqlMessage = err.sqlMessage || err.message || "";
+        return res.status(500).json({
+          mensaje: sqlMessage || "Error al eliminar el acta de medida.",
+          error: err.message,
+        });
+      }
+
+      const row = Array.isArray(results?.[0]) ? results[0][0] : null;
+      return res.status(200).json({
+        mensaje:
+          row?.mensaje ||
+          `El Acta de Medida ${consecutivo} fue eliminada correctamente.`,
+        resultado: row?.resultado ?? 1,
+      });
+    }
+  );
+};
+
+/**
+ * Anula acta de medida vía SP_ANULAR_ACTA_MEDIDA(consecutivo, usuario).
+ * pUsuario = id del usuario autenticado (JWT).
+ */
+const anularActasMedida = (req, res) => {
+  const body = req.body || {};
+  const consecutivo = String(body.consecutivo ?? "").trim();
+
+  if (!consecutivo) {
+    return res.status(400).json({
+      mensaje: "El consecutivo es obligatorio.",
+    });
+  }
+
+  const usuario = Number(req.user?.id_usuario ?? body.usuario ?? 0);
+
+  if (!Number.isFinite(usuario) || usuario <= 0) {
+    return res.status(401).json({
+      mensaje: "No se pudo identificar el usuario de anulación.",
+    });
+  }
+
+  db.query(
+    "CALL SP_ANULAR_ACTA_MEDIDA(?, ?)",
+    [consecutivo, usuario],
+    (err, results) => {
+      if (err) {
+        console.error("Error al anular acta de medida:", err);
+        const sqlMessage = err.sqlMessage || err.message || "";
+        return res.status(500).json({
+          mensaje: sqlMessage || "Error al anular el acta de medida.",
+          error: err.message,
+        });
+      }
+
+      const row = Array.isArray(results?.[0]) ? results[0][0] : null;
+      return res.status(200).json({
+        mensaje:
+          row?.mensaje || `Acta ${consecutivo} anulada correctamente.`,
+        resultado: row?.resultado ?? 1,
+      });
+    }
+  );
+};
+
+module.exports = {
+  consultActasMedida,
+  updateActasMedida,
+  deleteActasMedida,
+  anularActasMedida,
+};

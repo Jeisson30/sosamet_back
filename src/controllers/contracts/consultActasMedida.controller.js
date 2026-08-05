@@ -124,11 +124,57 @@ const updateActasMedida = (req, res) => {
         });
       }
 
-      const row = Array.isArray(results?.[0]) ? results[0][0] : null;
-      return res.status(200).json({
-        mensaje: row?.mensaje || "Acta de medida actualizada correctamente.",
-        resultado: row?.resultado ?? 1,
-      });
+      const finish = () => {
+        const row = Array.isArray(results?.[0]) ? results[0][0] : null;
+        return res.status(200).json({
+          mensaje: row?.mensaje || "Acta de medida actualizada correctamente.",
+          resultado: row?.resultado ?? 1,
+        });
+      };
+
+      // Campos de plano (opcionales) — no están en el SP de actualización
+      const amdId = toNumOrNull(body.amd_id);
+      const hasPlanoFields =
+        body.actualizar_detalle &&
+        amdId &&
+        (body.consecutivo_item !== undefined ||
+          body.evidencia_item !== undefined ||
+          body.fecha_enviado !== undefined ||
+          body.fecha_aprobado !== undefined);
+
+      if (!hasPlanoFields) {
+        return finish();
+      }
+
+      db.query(
+        `UPDATE actas_medida_detalle
+            SET amd_consecutivo_item = COALESCE(?, amd_consecutivo_item),
+                amd_evidencia_item = COALESCE(?, amd_evidencia_item),
+                amd_fecha_enviado = COALESCE(?, amd_fecha_enviado),
+                amd_fecha_aprobado = COALESCE(?, amd_fecha_aprobado),
+                amd_fecha_modificacion = NOW(),
+                amd_usuario_modificacion = ?
+          WHERE amd_id = ?`,
+        [
+          toNull(body.consecutivo_item),
+          toNull(body.evidencia_item),
+          toNull(body.fecha_enviado),
+          toNull(body.fecha_aprobado),
+          usuarioModificacion,
+          amdId,
+        ],
+        (updErr) => {
+          if (updErr) {
+            console.error("Error al actualizar campos de plano:", updErr);
+            return res.status(500).json({
+              mensaje:
+                "Acta actualizada, pero falló la actualización de campos de plano.",
+              error: updErr.message,
+            });
+          }
+          return finish();
+        }
+      );
     }
   );
 };

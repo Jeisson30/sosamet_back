@@ -44,6 +44,7 @@ const insertActasMedidaDetalle = require('./src/routes/contracts/insertActasMedi
 const generarConsecutivo = require('./src/routes/contracts/generarConsecutivo.routes')
 const consultarContratos = require('./src/routes/contracts/consultarContratos.routes')
 const consultActasMedida = require('./src/routes/contracts/consultActasMedida.routes')
+const consultActasDisenador = require('./src/routes/contracts/consultActasDisenador.routes')
 const getCompanies = require('./src/routes/contracts/getCompanies.routes');
 const getAllUsers = require('./src/routes/gestion/order-work/getAllusers.routes')
 const insertLiquidationCourts = require('./src/routes/gestion/liquidation-courts/insertLiquidationCourts.routes')
@@ -120,6 +121,7 @@ app.use('/api/contracts/getTypeFields', authMiddleware, typeFields);
 app.use('/api/contracts/purchase-orders', authMiddleware, consultPurchaseOrders);
 app.use('/api/contracts/remissions', authMiddleware, consultRemissions);
 app.use('/api/contracts/actas-medida', authMiddleware, consultActasMedida);
+app.use('/api/contracts/actas-disenador', authMiddleware, consultActasDisenador);
 app.use('/api/contracts/consult-contracts', authMiddleware, consultContracts);
 app.use('/api/contracts/consult-asistencia', authMiddleware, consultAsistencia);
 app.use('/api/contracts', authMiddleware, insertDataContract);

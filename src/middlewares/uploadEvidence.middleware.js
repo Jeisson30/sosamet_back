@@ -26,14 +26,24 @@ const allowedExt = new Set([
   ".gif",
   ".heic",
   ".pdf",
+  ".dwg",
+  ".dxf",
 ]);
 
 const fileFilter = (_req, file, cb) => {
   const ext = path.extname(file.originalname || "").toLowerCase();
-  if (allowedExt.has(ext) || String(file.mimetype || "").startsWith("image/")) {
+  if (
+    allowedExt.has(ext) ||
+    String(file.mimetype || "").startsWith("image/") ||
+    String(file.mimetype || "") === "application/pdf"
+  ) {
     cb(null, true);
   } else {
-    cb(new Error("Solo se permiten imágenes o PDF para la evidencia del acta."));
+    cb(
+      new Error(
+        "Solo se permiten imágenes, PDF o planos (DWG/DXF) para la evidencia."
+      )
+    );
   }
 };
 

@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const rateLimit = require("express-rate-limit");
+const path = require("path");
 // Cargar .env ANTES de cualquier otro require (db, rutas, controllers).
 dotenv.config({ override: true });
 
@@ -82,6 +83,9 @@ const allowedOrigins = [
   }));
   
 app.use(express.json());
+
+// Archivos de evidencia / adjuntos
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // 🔹 Rate limiting específico para login
 const loginLimiter = rateLimit({

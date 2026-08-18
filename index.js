@@ -84,8 +84,8 @@ const allowedOrigins = [
   
 app.use(express.json());
 
-// Archivos de evidencia / adjuntos
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Archivos de evidencia / adjuntos (misma carpeta que multer: sosamet_back/uploads)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // 🔹 Rate limiting específico para login
 const loginLimiter = rateLimit({

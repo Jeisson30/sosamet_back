@@ -15,11 +15,51 @@ const toNumOrNull = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 
+/** Adjunto general del acta (Adjuntar Acta) en item_documentos.archivo_acta. */
+const loadArchivosActaByConsecutivo = (consecutivos, callback) => {
+  const keys = [
+    ...new Set(
+      (consecutivos || [])
+        .map((c) => String(c ?? "").trim())
+        .filter(Boolean)
+    ),
+  ];
+
+  if (!keys.length) {
+    return callback(null, new Map());
+  }
+
+  const placeholders = keys.map(() => "?").join(",");
+  db.query(
+    `SELECT TRIM(numerodoc) AS consecutivo,
+            TRIM(valor_campo_doc) AS archivo_acta
+       FROM item_documentos
+      WHERE tipo_doc = 'ACTAS DE MEDIDA'
+        AND nombre_campo_doc = 'archivo_acta'
+        AND TRIM(numerodoc) IN (${placeholders})
+        AND valor_campo_doc IS NOT NULL
+        AND TRIM(valor_campo_doc) <> ''`,
+    keys,
+    (err, rows) => {
+      if (err) return callback(err);
+      const map = new Map();
+      for (const row of rows || []) {
+        const key = String(row.consecutivo ?? "").trim();
+        if (key && row.archivo_acta) {
+          map.set(key, String(row.archivo_acta).trim());
+        }
+      }
+      return callback(null, map);
+    }
+  );
+};
+
 /**
  * Consulta actas de medida vía SP_CONSULTAR_ACTAS_MEDIDA(6 params).
  * Params: buscar, constructora, proyecto, contrato, fecha_desde, fecha_hasta
  * (null = sin filtro / trae todo).
  * Devuelve 2 recordsets: cabecera y detalle.
+ * Enriquecer cabecera con archivo_acta (adjunto general, no por ítem).
  */
 const consultActasMedida = (req, res) => {
   const {
@@ -55,10 +95,31 @@ const consultActasMedida = (req, res) => {
       const cabecera = Array.isArray(results?.[0]) ? results[0] : [];
       const detalle = Array.isArray(results?.[1]) ? results[1] : [];
 
-      return res.status(200).json({
-        cabecera,
-        detalle,
-      });
+      loadArchivosActaByConsecutivo(
+        cabecera.map((h) => h?.consecutivo),
+        (loadErr, archivoMap) => {
+          if (loadErr) {
+            console.error(
+              "Error al cargar archivo_acta de actas de medida:",
+              loadErr
+            );
+            return res.status(200).json({ cabecera, detalle });
+          }
+
+          const cabeceraEnriquecida = cabecera.map((h) => {
+            const key = String(h?.consecutivo ?? "").trim();
+            return {
+              ...h,
+              archivo_acta: archivoMap.get(key) || h.archivo_acta || null,
+            };
+          });
+
+          return res.status(200).json({
+            cabecera: cabeceraEnriquecida,
+            detalle,
+          });
+        }
+      );
     }
   );
 };

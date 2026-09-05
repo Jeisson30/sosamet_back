@@ -3,6 +3,11 @@ const router = express.Router();
 const {
   consultarContratos,
 } = require("../../controllers/contracts/consultarContratos.controller");
+const {
+  consultarContratosFiltrados,
+  getContextoActaMedida,
+  upsertGrillaActaContrato,
+} = require("../../controllers/contracts/actaMedidaContexto.controller");
 
 /**
  * @swagger
@@ -18,5 +23,8 @@ const {
  *         description: Error interno
  */
 router.get("/consultar-contratos", consultarContratos);
+router.get("/contratos-filtrados", consultarContratosFiltrados);
+router.get("/contexto-acta-medida", getContextoActaMedida);
+router.post("/grilla-acta-contrato", upsertGrillaActaContrato);
 
 module.exports = router;

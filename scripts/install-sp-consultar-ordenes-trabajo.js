@@ -168,6 +168,8 @@ SALIR: BEGIN
         D.ancho,
         D.alto,
         D.observaciones AS observaciones_item,
+        D.owd_estado,
+        D.owd_fecha_finalizado,
         D.fecha_creacion AS fecha_creacion_item,
 
         AMD.amd_consecutivo AS consecutivo_acta,

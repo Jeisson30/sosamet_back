@@ -79,6 +79,9 @@ const insertLiquidationCourts = async (req, res) => {
         item.ref || null,
         item.no_orden || null,
         item.no_contrato || null,
+        String(item.tipo_vinculo || '').toUpperCase() === 'COTIZACION'
+          ? 'COTIZACION'
+          : 'CONTRATO',
         item.obra || null,
         item.item || null,
         item.descripcion || null,
@@ -94,7 +97,7 @@ const insertLiquidationCourts = async (req, res) => {
       await new Promise((resolve, reject) => {
         db.query(
           `INSERT INTO liquidacion_corte_plano
-          (id_liquidacion, ref, no_orden, no_contrato, obra, item, descripcion,
+          (id_liquidacion, ref, no_orden, no_contrato, tipo_vinculo, obra, item, descripcion,
           cantidad, um, ancho, alto, observaciones, vr_unitario, vr_total)
           VALUES ?`,
           [values],

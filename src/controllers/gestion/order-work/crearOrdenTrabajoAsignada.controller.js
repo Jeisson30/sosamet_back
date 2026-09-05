@@ -130,10 +130,39 @@ const crearOrdenTrabajoAsignada = (req, res) => {
         });
       }
 
+      const idOrderWork = row?.id_order_work ?? null;
+
+      // Hereda tipo_vinculo del acta/ítem (COTIZACION si el acta nació sin contrato).
+      if (idOrderWork) {
+        db.query(
+          `UPDATE order_work OW
+             INNER JOIN (
+               SELECT OWD.id_order_work,
+                      MAX(AMD.amd_tipo_vinculo) AS tipo_vinculo
+                 FROM order_work_detail OWD
+                 INNER JOIN actas_medida_detalle AMD
+                   ON AMD.amd_id = OWD.amd_id
+                WHERE OWD.id_order_work = ?
+                GROUP BY OWD.id_order_work
+             ) T ON T.id_order_work = OW.id_order_work
+                SET OW.ot_tipo_vinculo = IFNULL(T.tipo_vinculo, 'CONTRATO')
+              WHERE OW.id_order_work = ?`,
+          [idOrderWork, idOrderWork],
+          (updErr) => {
+            if (updErr) {
+              console.error(
+                "Aviso: no se pudo sincronizar ot_tipo_vinculo:",
+                updErr.message
+              );
+            }
+          }
+        );
+      }
+
       return res.status(200).json({
         Codigo: 1,
         Mensaje: mensaje,
-        id_order_work: row?.id_order_work ?? null,
+        id_order_work: idOrderWork,
         consecutivo: row?.consecutivo ?? consecutivo,
         estado: row?.estado ?? 1,
       });

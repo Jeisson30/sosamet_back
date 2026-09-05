@@ -34,11 +34,19 @@ const getKey = (row, target) => {
   return Object.keys(row).find((key) => normalize(key) === targetNorm);
 };
 
+const normalizeTipoVinculo = (raw) => {
+  const v = String(raw ?? "CONTRATO")
+    .trim()
+    .toUpperCase();
+  return v === "COTIZACION" ? "COTIZACION" : "CONTRATO";
+};
+
 // Controlador principal para subir archivo de Remisiones
 const uploadExcelRemisiones = async (req, res) => {
   try {
 
     const tipo_doc = req.body.tipo_doc || "Remisión";
+    const tipoVinculo = normalizeTipoVinculo(req.body.tipo_vinculo);
 
     // 🔥 CASO 1: VIENE ARCHIVO
     if (req.file) {
@@ -50,6 +58,8 @@ const uploadExcelRemisiones = async (req, res) => {
       if (!remisionesData.length) {
         return res.status(400).json({ error: "El archivo está vacío." });
       }
+
+      const contratosInsertados = new Set();
 
       for (const row of remisionesData) {
         const item = row[getKey(row, "ITEM")];
@@ -75,6 +85,20 @@ const uploadExcelRemisiones = async (req, res) => {
             tipo_doc,
           ]
         );
+        contratosInsertados.add(String(contrato).trim());
+      }
+
+      if (tipoVinculo === "COTIZACION" && contratosInsertados.size) {
+        for (const clave of contratosInsertados) {
+          await ejecutarQuery(
+            `UPDATE remisiones_plano
+                SET tipo_vinculo = ?
+              WHERE contrato = ?
+                AND IFNULL(tipo_doc, '') = ?
+                AND tipo_vinculo = 'CONTRATO'`,
+            [tipoVinculo, clave, tipo_doc]
+          );
+        }
       }
 
       fs.unlinkSync(req.file.path);
@@ -99,6 +123,7 @@ const uploadExcelRemisiones = async (req, res) => {
 
       const {
         tipo_doc_rem,
+        tipo_contrato,
         numero_contrato,
         remision_material,
         fecha_remision,
@@ -112,7 +137,9 @@ const uploadExcelRemisiones = async (req, res) => {
       } = req.body;
 
       if (!numero_contrato) {
-        return res.status(400).json({ error: "El número de contrato es obligatorio." });
+        return res.status(400).json({
+          error: "El número de contrato o N° cotización es obligatorio.",
+        });
       }
 
       if (!empresa_asociada) {
@@ -150,9 +177,16 @@ const uploadExcelRemisiones = async (req, res) => {
       const numerodoc = `RM-${Date.now()}`;
 
       // Insertar encabezado dinámico
+      // tipo_doc_rem = N° Documento (consecutivo); tipo_contrato = Contrato/Cotizacion/OfertaM…
       const campos = [
         { nombre: "tipo_doc_rem", valor: tipo_doc_rem },
+        { nombre: "tipo_contrato", valor: tipo_contrato },
         { nombre: "numero_contrato", valor: numero_contrato },
+        { nombre: "tipo_vinculo", valor: tipoVinculo },
+        {
+          nombre: "numero_cotizacion",
+          valor: tipoVinculo === "COTIZACION" ? String(numero_contrato) : "",
+        },
         { nombre: "remision_material", valor: remisionMaterialTrim },
         { nombre: "fecha_remision", valor: fecha_remision },
         { nombre: "cliente", valor: cliente },
@@ -190,6 +224,17 @@ const uploadExcelRemisiones = async (req, res) => {
             row.observaciones,
             tipo_doc,
           ]
+        );
+      }
+
+      if (tipoVinculo === "COTIZACION") {
+        await ejecutarQuery(
+          `UPDATE remisiones_plano
+              SET tipo_vinculo = ?
+            WHERE contrato = ?
+              AND IFNULL(tipo_doc, '') = ?
+              AND tipo_vinculo = 'CONTRATO'`,
+          [tipoVinculo, String(numero_contrato).trim(), tipo_doc]
         );
       }
 

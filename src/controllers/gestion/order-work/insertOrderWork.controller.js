@@ -13,8 +13,16 @@ const insertOrderWork = async (req, res) => {
     ot_tipo_documento,
     ot_contrato,
     ot_autorizo,
+    ot_tipo_vinculo,
     items
   } = req.body;
+
+  const tipoVinculo = (() => {
+    const v = String(ot_tipo_vinculo ?? "CONTRATO")
+      .trim()
+      .toUpperCase();
+    return v === "COTIZACION" ? "COTIZACION" : "CONTRATO";
+  })();
 
   if (
     !consecutivo ||
@@ -83,6 +91,16 @@ const insertOrderWork = async (req, res) => {
 
     if (!id_order_work) {
       throw new Error("No se pudo generar la orden de trabajo.");
+    }
+
+    if (tipoVinculo === "COTIZACION") {
+      await new Promise((resolve, reject) => {
+        connection.query(
+          `UPDATE order_work SET ot_tipo_vinculo = ? WHERE id_order_work = ?`,
+          [tipoVinculo, id_order_work],
+          (err) => (err ? reject(err) : resolve())
+        );
+      });
     }
 
     const values = items.map((item) => [

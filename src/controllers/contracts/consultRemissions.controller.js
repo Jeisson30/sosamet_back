@@ -61,12 +61,52 @@ const consultRemissions = (req, res) => {
           map.set(row.remision_material, row.numerodoc);
         });
 
-        const enriched = rows.map((r) => ({
-          ...r,
-          numerodoc: map.get(r.remision_material) || null,
-        }));
+        const numerodocs = Array.from(
+          new Set(
+            [...map.values()].filter((v) => v !== null && v !== undefined)
+          )
+        );
 
-        return res.status(200).json({ data: enriched });
+        const finish = (eavMap = new Map()) => {
+          const enriched = rows.map((r) => {
+            const numerodoc = map.get(r.remision_material) || null;
+            const eav = numerodoc ? eavMap.get(numerodoc) || {} : {};
+            return {
+              ...r,
+              numerodoc,
+              tipo_doc_rem:
+                eav.tipo_doc_rem != null && eav.tipo_doc_rem !== ''
+                  ? eav.tipo_doc_rem
+                  : r.tipo_doc_rem ?? null,
+              tipo_contrato: eav.tipo_contrato ?? r.tipo_contrato ?? null,
+            };
+          });
+          return res.status(200).json({ data: enriched });
+        };
+
+        if (!numerodocs.length) {
+          return finish();
+        }
+
+        db.query(
+          `SELECT numerodoc, nombre_campo_doc, valor_campo_doc
+             FROM sosamet.item_documentos
+            WHERE numerodoc IN (?)
+              AND nombre_campo_doc IN ('tipo_doc_rem', 'tipo_contrato')`,
+          [numerodocs],
+          (eavErr, eavRows) => {
+            if (eavErr) {
+              return finish();
+            }
+            const eavMap = new Map();
+            (eavRows || []).forEach((row) => {
+              const cur = eavMap.get(row.numerodoc) || {};
+              cur[row.nombre_campo_doc] = row.valor_campo_doc;
+              eavMap.set(row.numerodoc, cur);
+            });
+            return finish(eavMap);
+          }
+        );
       }
     );
   });
@@ -78,6 +118,7 @@ const updateRemission = (req, res) => {
     actualizar_cabecera,
     actualizar_detalle,
     tipo_doc_rem,
+    tipo_contrato,
     numero_contrato,
     remision_material,
     fecha_remision,
@@ -95,6 +136,39 @@ const updateRemission = (req, res) => {
     detalle,
     observaciones,
   } = req.body || {};
+
+  const upsertEavCampo = (docNumber, nombre, valor, done) => {
+    if (!docNumber || valor === undefined || valor === null) {
+      return done();
+    }
+    const v = String(valor).trim();
+    db.query(
+      `SELECT id FROM sosamet.item_documentos
+        WHERE numerodoc = ?
+          AND nombre_campo_doc = ?
+        LIMIT 1`,
+      [docNumber, nombre],
+      (selErr, selRows) => {
+        if (selErr) return done(selErr);
+        if (selRows && selRows.length) {
+          db.query(
+            `UPDATE sosamet.item_documentos
+                SET valor_campo_doc = ?
+              WHERE numerodoc = ?
+                AND nombre_campo_doc = ?`,
+            [v, docNumber, nombre],
+            done
+          );
+        } else {
+          db.query(
+            `CALL sp_insertar_item_documento(?, ?, ?, ?)`,
+            ['REMISIONES', docNumber, nombre, v],
+            done
+          );
+        }
+      }
+    );
+  };
 
   const ejecutarActualizacion = (docNumber) => {
     const params = [
@@ -131,9 +205,15 @@ const updateRemission = (req, res) => {
           });
         }
 
-        return res
-          .status(200)
-          .json({ mensaje: 'Remisión actualizada correctamente' });
+        // tipo_contrato (Contrato/Cotizacion/…) no está en el SP; se persiste en EAV.
+        upsertEavCampo(docNumber, 'tipo_contrato', tipo_contrato, (eavErr) => {
+          if (eavErr) {
+            console.error('updateRemission tipo_contrato:', eavErr);
+          }
+          return res
+            .status(200)
+            .json({ mensaje: 'Remisión actualizada correctamente' });
+        });
       }
     );
   };

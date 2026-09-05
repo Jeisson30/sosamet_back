@@ -44,6 +44,12 @@ const uploadExcelOrder = async (req, res) => {
 
     const consecutivo = req.body.consecutivo;
     const tipo_doc = req.body.tipo_doc || "Orden De Compra";
+    const tipoVinculo = (() => {
+      const v = String(req.body.tipo_vinculo ?? "CONTRATO")
+        .trim()
+        .toUpperCase();
+      return v === "COTIZACION" ? "COTIZACION" : "CONTRATO";
+    })();
 
     if (!consecutivo) {
       fs.unlinkSync(req.file.path);
@@ -151,6 +157,16 @@ const uploadExcelOrder = async (req, res) => {
       await ejecutarQuery(
         `CALL sp_insertar_orden_compra(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         values
+      );
+    }
+
+    if (tipoVinculo === "COTIZACION") {
+      await ejecutarQuery(
+        `UPDATE orden_compra
+            SET tipo_vinculo = ?
+          WHERE numdoc = ?
+            AND tipo_vinculo = 'CONTRATO'`,
+        [tipoVinculo, numdoc]
       );
     }
 

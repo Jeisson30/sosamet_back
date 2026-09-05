@@ -50,6 +50,7 @@ const getCompanies = require('./src/routes/contracts/getCompanies.routes');
 const getAllUsers = require('./src/routes/gestion/order-work/getAllusers.routes')
 const insertLiquidationCourts = require('./src/routes/gestion/liquidation-courts/insertLiquidationCourts.routes')
 const insertOrderWork = require('./src/routes/gestion/order-work/insertOrderWork.routes')
+const ejecucionCortes = require('./src/routes/gestion/ejecucion-cortes/ejecucionCortes.routes')
 const catalogRoutes = require('./src/routes/catalog.routes');
 const administracionRoutes = require('./src/routes/administracion/administracion.routes');
 const { requireAdminOrSupervisor } = require('./src/middlewares/adminOrSupervisor.middleware');
@@ -144,6 +145,7 @@ app.use('/api/contracts', authMiddleware, getCompanies);
 app.use('/api/gestion', authMiddleware, getAllUsers);
 app.use('/api/gestion/liquidation-courts', authMiddleware, insertLiquidationCourts);
 app.use('/api/gestion/order-work', authMiddleware, insertOrderWork);
+app.use('/api/gestion/ejecucion-cortes', authMiddleware, ejecucionCortes);
 app.use('/api/catalog', authMiddleware, catalogRoutes);
 app.use(
   '/api/administracion',

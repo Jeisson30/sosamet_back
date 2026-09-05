@@ -5,6 +5,10 @@ const {
   insertAiuRowsFromSheet,
   insertIvaRowsFromSheet,
 } = require('../../services/contractPlano.service');
+const {
+  normalizeContratoCamposBeforeInsert,
+  validateContratoDocumentoNumero,
+} = require('../../services/contratoDocumentoNumero.service');
 const { notifyDocumentCreated } = require('../../utils/documentCreatedEmail');
 
 const unlinkSafe = (filePath) => {
@@ -68,17 +72,47 @@ const insertContractWithPlano = async (req, res) => {
       });
     }
 
-    const tipoDocPlano = req.body.tipo_doc_plano || tipo_doc;
+    const tipoDocCatalogo = String(req.body?.tipo_doc_catalogo ?? '').trim();
+    const tipoDocPlano =
+      String(req.body?.tipo_doc_plano ?? '').trim() ||
+      tipoDocCatalogo ||
+      tipo_doc;
+
+    let camposNormalizados = campos;
+    let numerodocFinal = numerodoc;
+
+    if (isContrato) {
+      const norm = normalizeContratoCamposBeforeInsert(
+        campos,
+        numerodoc,
+        tipoDocCatalogo
+      );
+      camposNormalizados = norm.campos;
+      numerodocFinal = norm.numerodoc;
+    }
 
     await runInTransaction(async (queryTx) => {
-      await insertDocumentFields(queryTx, tipo_doc, numerodoc, campos);
+      if (isContrato) {
+        await validateContratoDocumentoNumero(queryTx, {
+          campos: camposNormalizados,
+          numerodoc: numerodocFinal,
+          tipo_doc_catalogo: tipoDocCatalogo,
+        });
+      }
+
+      await insertDocumentFields(
+        queryTx,
+        tipo_doc,
+        numerodocFinal,
+        camposNormalizados
+      );
 
       if (hasAiu) {
         await insertAiuRowsFromSheet(
           queryTx,
           fileAiu.path,
           tipoDocPlano,
-          numerodoc,
+          numerodocFinal,
           { validateContrato: true }
         );
       }
@@ -88,7 +122,7 @@ const insertContractWithPlano = async (req, res) => {
           queryTx,
           fileIva.path,
           tipoDocPlano,
-          numerodoc,
+          numerodocFinal,
           { validateContrato: true }
         );
       }
@@ -103,7 +137,7 @@ const insertContractWithPlano = async (req, res) => {
     void notifyDocumentCreated({
       reqUser: req.user,
       tipo_doc,
-      numerodoc,
+      numerodoc: numerodocFinal,
     });
 
     return response;
@@ -111,8 +145,13 @@ const insertContractWithPlano = async (req, res) => {
     console.error('Error insertContractWithPlano:', error);
     tempFiles.forEach(unlinkSafe);
 
-    return res.status(500).json({
+    const isValidation =
+      error?.sqlState === '45000' || error?.errno === 1644;
+
+    return res.status(isValidation ? 400 : 500).json({
       mensaje:
+        error.sqlMessage ||
+        error.message ||
         'No se guardó el contrato. Ningún dato fue registrado. Verifique el formulario y el archivo plano.',
       error: error.message,
     });

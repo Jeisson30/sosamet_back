@@ -86,6 +86,57 @@ const insertActasMedidaDetalle = async (req, res) => {
     const files = Array.isArray(req.files) ? req.files : [];
     const fileByField = new Map(files.map((f) => [f.fieldname, f]));
 
+    // Validar códigos de insumo contra catálogo cuando vienen en el payload
+    const codigos = [
+      ...new Set(
+        itemsConCantidad
+          .map((row) =>
+            String(row?.insumo_codigo ?? row?.amd_insumo_codigo ?? "")
+              .trim()
+              .toUpperCase()
+          )
+          .filter(Boolean)
+      ),
+    ];
+
+    if (codigos.length) {
+      const placeholders = codigos.map(() => "?").join(",");
+      const found = await ejecutarQuery(
+        `SELECT UPPER(TRIM(codigo)) AS codigo
+           FROM insumo
+          WHERE estado = 'ACTIVO'
+            AND UPPER(TRIM(codigo)) IN (${placeholders})`,
+        codigos
+      );
+      const foundSet = new Set(
+        (Array.isArray(found) ? found : []).map((r) =>
+          String(r.codigo ?? "").trim().toUpperCase()
+        )
+      );
+      const missing = codigos.filter((c) => !foundSet.has(c));
+      if (missing.length) {
+        return res.status(400).json({
+          mensaje: `Hay códigos de insumo que no existen en el catálogo: ${missing.join(
+            ", "
+          )}. Debe registrarlos en Administración → Insumos.`,
+          codigos_faltantes: missing,
+        });
+      }
+    }
+
+    // Toda fila medida debe traer insumo válido del catálogo
+    for (const row of itemsConCantidad) {
+      const code = String(row?.insumo_codigo ?? "").trim().toUpperCase();
+      const id = Number(row?.insumo_id);
+      if (!code || !Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({
+          mensaje: `El ítem "${String(
+            row?.item ?? ""
+          ).trim()}" no tiene un insumo válido del catálogo.`,
+        });
+      }
+    }
+
     for (let i = 0; i < itemsConCantidad.length; i++) {
       const row = itemsConCantidad[i] || {};
       // Evidencia por ítem deprecada: archivo general del acta (archivo_acta).
@@ -94,8 +145,14 @@ const insertActasMedidaDetalle = async (req, res) => {
         ? path.posix.join("uploads", legacyFile.filename)
         : null;
 
+      const insumoIdRaw = Number(row.insumo_id ?? row.amd_insumo_id);
+      const insumoId =
+        Number.isFinite(insumoIdRaw) && insumoIdRaw > 0 ? insumoIdRaw : null;
+      const insumoCodigo =
+        String(row.insumo_codigo ?? row.amd_insumo_codigo ?? "").trim() || null;
+
       await ejecutarQuery(
-        `CALL sp_insertar_actas_medida_plano(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `CALL sp_insertar_actas_medida_plano(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           consecutivo,
           numeroContrato,
@@ -110,6 +167,8 @@ const insertActasMedidaDetalle = async (req, res) => {
           evidenciaPath,
           usuarioCreacion,
           tipoVinculo,
+          insumoId,
+          insumoCodigo,
         ]
       );
     }

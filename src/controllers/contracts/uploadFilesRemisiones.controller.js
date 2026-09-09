@@ -154,13 +154,26 @@ const uploadExcelRemisiones = async (req, res) => {
       }
 
       // No permitir insertar si ya existe el mismo número de remisión en BD
+      // (con o sin prefijo SM/HS).
+      const remUpper = remisionMaterialTrim.toUpperCase();
+      const remBare = remUpper.replace(/^(SM|HS)/, "");
       const existing = await ejecutarQuery(
-        `SELECT numerodoc
-           FROM sosamet.item_documentos
+        `SELECT numerodoc, TRIM(valor_campo_doc) AS remision_material
+           FROM item_documentos
           WHERE nombre_campo_doc = 'remision_material'
-            AND TRIM(valor_campo_doc) = ?
+            AND (
+              UPPER(TRIM(valor_campo_doc)) = ?
+              OR UPPER(TRIM(valor_campo_doc)) = ?
+              OR UPPER(TRIM(valor_campo_doc)) = ?
+              OR UPPER(TRIM(valor_campo_doc)) = ?
+            )
           LIMIT 1`,
-        [remisionMaterialTrim]
+        [
+          remUpper,
+          remBare,
+          `SM${remBare}`,
+          `HS${remBare}`,
+        ]
       );
 
       // mysql2 puede devolver RowDataPacket[]; mysql (callback) devuelve array directo.

@@ -1,10 +1,13 @@
 const express = require("express");
 const router = express.Router();
+const uploadEvidence = require("../../middlewares/uploadEvidence.middleware");
 const {
   consultActasMedida,
   updateActasMedida,
   deleteActasMedida,
   anularActasMedida,
+  deleteActaMedidaDetalle,
+  updateArchivoActaMedida,
 } = require("../../controllers/contracts/consultActasMedida.controller");
 
 /**
@@ -14,38 +17,6 @@ const {
  *     summary: Consultar actas de medida (SP_CONSULTAR_ACTAS_MEDIDA)
  *     tags:
  *       - Contratos
- *     parameters:
- *       - in: query
- *         name: buscar
- *         schema:
- *           type: string
- *       - in: query
- *         name: constructora
- *         schema:
- *           type: string
- *       - in: query
- *         name: proyecto
- *         schema:
- *           type: string
- *       - in: query
- *         name: contrato
- *         schema:
- *           type: string
- *       - in: query
- *         name: fecha_desde
- *         schema:
- *           type: string
- *           format: date
- *       - in: query
- *         name: fecha_hasta
- *         schema:
- *           type: string
- *           format: date
- *     responses:
- *       200:
- *         description: Cabecera y detalle de actas de medida
- *       500:
- *         description: Error interno
  */
 router.get("/", consultActasMedida);
 
@@ -56,13 +27,6 @@ router.get("/", consultActasMedida);
  *     summary: Actualizar acta de medida (SP_ACTUALIZAR_ACTA_MEDIDA)
  *     tags:
  *       - Contratos
- *     responses:
- *       200:
- *         description: Acta actualizada
- *       400:
- *         description: Datos incompletos
- *       500:
- *         description: Error interno
  */
 router.post("/update", updateActasMedida);
 
@@ -73,13 +37,6 @@ router.post("/update", updateActasMedida);
  *     summary: Eliminar acta de medida (SP_ELIMINAR_ACTA_MEDIDA)
  *     tags:
  *       - Contratos
- *     responses:
- *       200:
- *         description: Acta eliminada
- *       400:
- *         description: Datos incompletos
- *       500:
- *         description: Error interno
  */
 router.post("/delete", deleteActasMedida);
 
@@ -90,14 +47,13 @@ router.post("/delete", deleteActasMedida);
  *     summary: Anular acta de medida (SP_ANULAR_ACTA_MEDIDA)
  *     tags:
  *       - Contratos
- *     responses:
- *       200:
- *         description: Acta anulada
- *       400:
- *         description: Datos incompletos
- *       500:
- *         description: Error interno
  */
 router.post("/anular", anularActasMedida);
+
+/** Eliminar un ítem de detalle (amd_id). */
+router.post("/detalle/delete", deleteActaMedidaDetalle);
+
+/** Subir/reemplazar archivo_acta (multipart). */
+router.post("/archivo", uploadEvidence.any(), updateArchivoActaMedida);
 
 module.exports = router;

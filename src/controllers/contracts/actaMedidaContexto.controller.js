@@ -109,6 +109,7 @@ const loadItemsContrato = async (numerodoc) => {
     aiu = await queryAsync(
       `SELECT
           TRIM(item) AS item,
+          TRIM(IFNULL(insumo, '')) AS insumo,
           TRIM(descripcion) AS detalle,
           cant AS cantidad_contratada,
           TRIM(und) AS um,
@@ -126,6 +127,7 @@ const loadItemsContrato = async (numerodoc) => {
     iva = await queryAsync(
       `SELECT
           TRIM(item) AS item,
+          TRIM(IFNULL(insumo, '')) AS insumo,
           TRIM(descripcion) AS detalle,
           cant AS cantidad_contratada,
           TRIM(und) AS um,
@@ -140,8 +142,9 @@ const loadItemsContrato = async (numerodoc) => {
     iva = [];
   }
 
-  return [...(aiu || []), ...(iva || [])].map((r) => ({
+  const raw = [...(aiu || []), ...(iva || [])].map((r) => ({
     item: String(r.item ?? '').trim(),
+    insumo: String(r.insumo ?? '').trim().toUpperCase(),
     detalle: String(r.detalle ?? '').trim(),
     cantidad_contratada:
       r.cantidad_contratada != null ? Number(r.cantidad_contratada) : null,
@@ -149,6 +152,72 @@ const loadItemsContrato = async (numerodoc) => {
     ancho_contrato: r.ancho_contrato != null ? Number(r.ancho_contrato) : null,
     alto_contrato: r.alto_contrato != null ? Number(r.alto_contrato) : null,
   }));
+
+  return await enrichItemsWithCatalog(raw);
+};
+
+/** Cruza códigos del plano con catálogo activo (insumo / categoría). */
+const enrichItemsWithCatalog = async (items) => {
+  let catalog = [];
+  try {
+    catalog = await queryAsync(
+      `SELECT
+          i.id_insumo,
+          UPPER(TRIM(i.codigo)) AS codigo,
+          i.nombre AS insumo_nombre,
+          i.id_categoria,
+          c.nombre AS categoria,
+          c.prefijo AS categoria_prefijo
+        FROM insumo i
+        INNER JOIN insumo_categoria c ON c.id_categoria = i.id_categoria
+        WHERE i.estado = 'ACTIVO'
+          AND c.estado = 'ACTIVO'`
+    );
+  } catch (_) {
+    catalog = [];
+  }
+
+  const byCodigo = new Map();
+  for (const row of catalog || []) {
+    const code = String(row.codigo ?? '').trim().toUpperCase();
+    if (code) byCodigo.set(code, row);
+  }
+
+  return (items || []).map((it) => {
+    const code = String(it.insumo ?? '').trim().toUpperCase();
+    const hit = code ? byCodigo.get(code) : null;
+    return {
+      ...it,
+      insumo: code || null,
+      insumo_id: hit ? Number(hit.id_insumo) : null,
+      insumo_nombre: hit ? String(hit.insumo_nombre ?? '') : null,
+      categoria_id: hit ? Number(hit.id_categoria) : null,
+      categoria: hit
+        ? String(hit.categoria ?? '').trim() === 'INSUMO CONCEPTO'
+          ? 'INSUMO'
+          : String(hit.categoria ?? '').trim()
+        : null,
+      categoria_prefijo: hit ? String(hit.categoria_prefijo ?? '') : null,
+      catalogo_ok: !!hit,
+    };
+  });
+};
+
+/** Adjunta dimensiones de grilla solo a ítems del plano (sin extras). */
+const attachGrillaToItemsPlano = (items, grilla) => {
+  const grillaMap = new Map();
+  for (const g of grilla || []) {
+    const key = String(g.item ?? '').trim();
+    if (key) grillaMap.set(key, g);
+  }
+  return (items || []).map((it) => {
+    const g = grillaMap.get(String(it.item ?? '').trim());
+    if (!g) return it;
+    return {
+      ...it,
+      // detalle/um del plano prevalecen; grilla aporta medidas editables vía grilla_estado
+    };
+  });
 };
 
 /** Une plano AIU/IVA con ítems ya medidos en actas (p. ej. manuales). */
@@ -464,15 +533,8 @@ const getContextoActaMedida = async (req, res) => {
         loadGrillaContrato(numeroContrato),
       ]);
 
-    const mergedActas = mergeItemsContratoConActas(
-      itemsPlano,
-      acumulado_actas,
-      actas_anteriores
-    );
-    const items_contrato = mergeItemsContratoConGrilla(
-      mergedActas,
-      grilla_estado
-    );
+    // Solo ítems del plano contratado (sin extras de actas anteriores).
+    const items_contrato = attachGrillaToItemsPlano(itemsPlano, grilla_estado);
 
     return res.status(200).json({
       cabecera: cabecera || { numero_contrato: numeroContrato },

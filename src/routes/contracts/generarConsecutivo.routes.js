@@ -3,6 +3,7 @@ const { body } = require("express-validator");
 const router = express.Router();
 const {
   generarConsecutivo,
+  siguienteConsecutivo,
 } = require("../../controllers/contracts/generarConsecutivo.controller");
 const { validateRequest } = require("../../middlewares/validation.middleware");
 
@@ -13,25 +14,6 @@ const { validateRequest } = require("../../middlewares/validation.middleware");
  *     summary: Generar consecutivo (SP_GENERAR_CONSECUTIVO)
  *     tags:
  *       - Contratos
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - tipo
- *             properties:
- *               tipo:
- *                 type: string
- *                 example: ACTA_MEDIDA
- *     responses:
- *       200:
- *         description: Consecutivo generado
- *       400:
- *         description: No se pudo generar
- *       500:
- *         description: Error interno
  */
 router.post(
   "/generar-consecutivo",
@@ -45,5 +27,14 @@ router.post(
   ],
   generarConsecutivo
 );
+
+/**
+ * Peek del siguiente consecutivo (no consume contador).
+ * GET/POST /api/contracts/siguiente-consecutivo
+ *  - tipo=ACTAS_DE_MEDIDA
+ *  - tipo=REMISIONES&empresa_asociada=1|2
+ */
+router.get("/siguiente-consecutivo", siguienteConsecutivo);
+router.post("/siguiente-consecutivo", siguienteConsecutivo);
 
 module.exports = router;

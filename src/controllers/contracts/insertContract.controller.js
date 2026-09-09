@@ -1,5 +1,7 @@
 const db = require("../../config/db");
-const { notifyDocumentCreated } = require('../../utils/documentCreatedEmail');
+const { notifyDocumentCreated } = require("../../utils/documentCreatedEmail");
+
+const dbp = db.promise();
 
 const insertContract = async (req, res) => {
   const { tipo_doc, numerodoc, campos, acta_plano_id } = req.body;
@@ -10,7 +12,28 @@ const insertContract = async (req, res) => {
     });
   }
 
+  const doc = String(numerodoc).trim();
+  const tipo = String(tipo_doc).trim();
+
   try {
+    // Actas: evitar choque si dos usuarios abrieron el mismo peek
+    if (tipo.toUpperCase() === "ACTAS DE MEDIDA") {
+      const [existing] = await dbp.query(
+        `SELECT numerodoc
+           FROM item_documentos
+          WHERE UPPER(TRIM(tipo_doc)) = 'ACTAS DE MEDIDA'
+            AND TRIM(numerodoc) = ?
+          LIMIT 1`,
+        [doc]
+      );
+      if (Array.isArray(existing) && existing.length > 0) {
+        return res.status(409).json({
+          mensaje: `Ya existe un acta con el consecutivo ${doc}. Se asignará el siguiente automáticamente; intente guardar de nuevo.`,
+          codigo: "CONSECUTIVO_DUPLICADO",
+        });
+      }
+    }
+
     const resultados = [];
 
     for (const campo of campos) {
@@ -24,10 +47,12 @@ const insertContract = async (req, res) => {
         continue;
       }
 
-      const result = await db.execute(
-        "CALL sp_insertar_item_documento(?, ?, ?, ?)",
-        [tipo_doc, numerodoc, nombre, valor]
-      );
+      await dbp.execute("CALL sp_insertar_item_documento(?, ?, ?, ?)", [
+        tipo,
+        doc,
+        nombre,
+        valor,
+      ]);
 
       resultados.push({
         campo: nombre,
@@ -96,15 +121,14 @@ const insertContract = async (req, res) => {
       }
     }
     res.status(200).json({
-      mensaje: `Documento tipo "${tipo_doc}" procesado.`,
+      mensaje: `Documento tipo "${tipo}" procesado.`,
       resultados,
     });
 
-    // Best-effort: correo informativo (no bloquea respuesta)
     void notifyDocumentCreated({
       reqUser: req.user,
-      tipo_doc,
-      numerodoc,
+      tipo_doc: tipo,
+      numerodoc: doc,
     });
   } catch (error) {
     console.error("❌ Error al insertar campos:", error);

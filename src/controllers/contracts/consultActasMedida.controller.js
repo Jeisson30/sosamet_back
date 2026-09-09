@@ -171,10 +171,13 @@ const updateActasMedida = (req, res) => {
     toNull(body.observaciones_detalle),
     toNull(body.evidencia),
     usuarioModificacion,
+    toNumOrNull(body.insumo_id ?? body.amd_insumo_id),
+    toNull(body.insumo_codigo ?? body.amd_insumo_codigo),
+    toNumOrNull(body.fondo ?? body.amd_fondo),
   ];
 
   db.query(
-    "CALL SP_ACTUALIZAR_ACTA_MEDIDA(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "CALL SP_ACTUALIZAR_ACTA_MEDIDA(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     params,
     (err, results) => {
       if (err) {
@@ -323,9 +326,123 @@ const anularActasMedida = (req, res) => {
   );
 };
 
+/**
+ * Elimina un ítem de detalle por amd_id (edición desde consulta).
+ */
+const deleteActaMedidaDetalle = (req, res) => {
+  const amdId = toNumOrNull(req.body?.amd_id ?? req.params?.amd_id);
+  if (!amdId) {
+    return res.status(400).json({
+      mensaje: "amd_id es obligatorio.",
+    });
+  }
+
+  const usuario = Number(req.user?.id_usuario ?? 0);
+  if (!Number.isFinite(usuario) || usuario <= 0) {
+    return res.status(401).json({
+      mensaje: "No se pudo identificar el usuario.",
+    });
+  }
+
+  db.query(
+    `DELETE FROM actas_medida_detalle WHERE amd_id = ?`,
+    [amdId],
+    (err, result) => {
+      if (err) {
+        console.error("Error al eliminar detalle de acta:", err);
+        return res.status(500).json({
+          mensaje: "Error al eliminar el ítem del acta.",
+          error: err.message,
+        });
+      }
+      const affected = result?.affectedRows ?? 0;
+      if (!affected) {
+        return res.status(404).json({
+          mensaje: "No se encontró el ítem a eliminar.",
+        });
+      }
+      return res.status(200).json({
+        mensaje: "Ítem eliminado correctamente.",
+        resultado: 1,
+        amd_id: amdId,
+      });
+    }
+  );
+};
+
+/**
+ * Reemplaza/sube archivo_acta del acta (item_documentos).
+ * Multipart: consecutivo + archivo_acta
+ */
+const updateArchivoActaMedida = (req, res) => {
+  const consecutivo = String(req.body?.consecutivo ?? "").trim();
+  if (!consecutivo) {
+    return res.status(400).json({
+      mensaje: "El consecutivo es obligatorio.",
+    });
+  }
+
+  const files = Array.isArray(req.files) ? req.files : [];
+  const archivo =
+    files.find((f) => f.fieldname === "archivo_acta") || files[0] || null;
+  if (!archivo) {
+    return res.status(400).json({
+      mensaje: "Debe adjuntar el archivo del acta (archivo_acta).",
+    });
+  }
+
+  const path = require("path");
+  const archivoPath = path.posix.join("uploads", archivo.filename);
+
+  db.query(
+    `UPDATE item_documentos
+        SET valor_campo_doc = ?
+      WHERE tipo_doc = 'ACTAS DE MEDIDA'
+        AND nombre_campo_doc = 'archivo_acta'
+        AND TRIM(numerodoc) = ?`,
+    [archivoPath, consecutivo],
+    (updErr, result) => {
+      if (updErr) {
+        console.error("Error al actualizar archivo_acta:", updErr);
+        return res.status(500).json({
+          mensaje: "Error al actualizar el archivo del acta.",
+          error: updErr.message,
+        });
+      }
+
+      if ((result?.affectedRows ?? 0) > 0) {
+        return res.status(200).json({
+          mensaje: "Archivo del acta actualizado.",
+          archivo_acta: archivoPath,
+        });
+      }
+
+      db.query(
+        `CALL sp_insertar_item_documento(?, ?, ?, ?)`,
+        ["ACTAS DE MEDIDA", consecutivo, "archivo_acta", archivoPath],
+        (insErr) => {
+          if (insErr) {
+            console.error("Error al insertar archivo_acta:", insErr);
+            return res.status(500).json({
+              mensaje: "Error al guardar el archivo del acta.",
+              error: insErr.message,
+            });
+          }
+          return res.status(200).json({
+            mensaje: "Archivo del acta guardado.",
+            archivo_acta: archivoPath,
+          });
+        }
+      );
+    }
+  );
+};
+
 module.exports = {
   consultActasMedida,
   updateActasMedida,
   deleteActasMedida,
   anularActasMedida,
+  deleteActaMedidaDetalle,
+  updateArchivoActaMedida,
 };

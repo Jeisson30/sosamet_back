@@ -20,6 +20,17 @@ const {
   actualizarDocumentoNumero,
   eliminarDocumentoNumero,
 } = require('../../controllers/administracion/documentoNumero.controller');
+const {
+  listarCategorias,
+  crearCategoria,
+  actualizarCategoria,
+  cambiarEstadoCategoria,
+  listarInsumos,
+  crearInsumo,
+  actualizarInsumo,
+  cambiarEstadoInsumo,
+  siguienteCodigo,
+} = require('../../controllers/administracion/insumos.controller');
 
 const router = express.Router();
 
@@ -183,6 +194,72 @@ router.put(
 router.delete(
   '/documentos-numero/:idDocumentoNumero',
   eliminarDocumentoNumero
+);
+
+/* ---------- Insumos (catálogo parametrizable) ---------- */
+router.get('/insumos/categorias', listarCategorias);
+router.post(
+  '/insumos/categorias',
+  [
+    body('nombre').isString().trim().notEmpty().withMessage('El nombre es obligatorio'),
+    body('prefijo').isString().trim().notEmpty().withMessage('El prefijo es obligatorio'),
+    validateRequest,
+  ],
+  crearCategoria
+);
+router.put(
+  '/insumos/categorias/:idCategoria',
+  [
+    body('nombre').isString().trim().notEmpty().withMessage('El nombre es obligatorio'),
+    validateRequest,
+  ],
+  actualizarCategoria
+);
+router.patch(
+  '/insumos/categorias/:idCategoria/estado',
+  [
+    body('estado')
+      .trim()
+      .toUpperCase()
+      .isIn(['ACTIVO', 'INACTIVO'])
+      .withMessage('Estado debe ser ACTIVO o INACTIVO'),
+    validateRequest,
+  ],
+  cambiarEstadoCategoria
+);
+
+router.get('/insumos', listarInsumos);
+router.get('/insumos/siguiente-codigo', siguienteCodigo);
+router.post(
+  '/insumos',
+  [
+    body('id_categoria').isInt({ min: 1 }).withMessage('La categoría es obligatoria'),
+    body('nombre').isString().trim().notEmpty().withMessage('El nombre es obligatorio'),
+    body('codigo').optional({ nullable: true }).isString().trim(),
+    validateRequest,
+  ],
+  crearInsumo
+);
+router.put(
+  '/insumos/:idInsumo',
+  [
+    body('nombre').isString().trim().notEmpty().withMessage('El nombre es obligatorio'),
+    body('codigo').isString().trim().notEmpty().withMessage('El código es obligatorio'),
+    validateRequest,
+  ],
+  actualizarInsumo
+);
+router.patch(
+  '/insumos/:idInsumo/estado',
+  [
+    body('estado')
+      .trim()
+      .toUpperCase()
+      .isIn(['ACTIVO', 'INACTIVO'])
+      .withMessage('Estado debe ser ACTIVO o INACTIVO'),
+    validateRequest,
+  ],
+  cambiarEstadoInsumo
 );
 
 module.exports = router;

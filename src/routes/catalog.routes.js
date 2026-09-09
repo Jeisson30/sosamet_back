@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   getConstructoras,
   getProyectosByConstructora,
+  getInsumosActivos,
 } = require('../controllers/catalog.controller');
 
 /**
@@ -32,6 +33,8 @@ router.get('/constructoras', getConstructoras);
  *     tags: [Catálogo]
  */
 router.get('/constructoras/:idConstructora/proyectos', getProyectosByConstructora);
+
+router.get('/insumos', getInsumosActivos);
 
 module.exports = router;
 

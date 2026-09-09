@@ -46,8 +46,49 @@ const getProyectosByConstructora = (req, res) => {
   );
 };
 
+/** Catálogo activo de insumos para selects (actas, etc.). */
+const getInsumosActivos = (req, res) => {
+  const sqlCategorias = `
+    SELECT id_categoria, nombre, prefijo
+      FROM insumo_categoria
+     WHERE estado = 'ACTIVO'
+     ORDER BY nombre`;
+
+  const sqlInsumos = `
+    SELECT i.id_insumo, i.id_categoria, i.codigo, i.nombre, c.prefijo
+      FROM insumo i
+      INNER JOIN insumo_categoria c ON c.id_categoria = i.id_categoria
+     WHERE i.estado = 'ACTIVO'
+       AND c.estado = 'ACTIVO'
+     ORDER BY c.prefijo, i.codigo`;
+
+  db.query(sqlCategorias, (errCat, categorias) => {
+    if (errCat) {
+      return res.status(500).json({
+        error: 'Error al consultar categorías de insumos',
+        detalle: errCat.message,
+      });
+    }
+
+    db.query(sqlInsumos, (errIns, insumos) => {
+      if (errIns) {
+        return res.status(500).json({
+          error: 'Error al consultar insumos',
+          detalle: errIns.message,
+        });
+      }
+
+      return res.status(200).json({
+        categorias: categorias || [],
+        insumos: insumos || [],
+      });
+    });
+  });
+};
+
 module.exports = {
   getConstructoras,
   getProyectosByConstructora,
+  getInsumosActivos,
 };
 

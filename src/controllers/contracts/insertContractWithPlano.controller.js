@@ -145,13 +145,30 @@ const insertContractWithPlano = async (req, res) => {
     console.error('Error insertContractWithPlano:', error);
     tempFiles.forEach(unlinkSafe);
 
+    if (error?.statusCode === 409 || error?.codigo === 'CONSECUTIVO_DUPLICADO') {
+      return res.status(409).json({
+        mensaje: error.message,
+        codigo: 'CONSECUTIVO_DUPLICADO',
+      });
+    }
+
     const isValidation =
-      error?.sqlState === '45000' || error?.errno === 1644;
+      error?.sqlState === '45000' ||
+      error?.errno === 1644 ||
+      error?.statusCode === 400;
+    const text = String(
+      error.sqlMessage || error.message || ''
+    ).trim();
+    if (/ya existe/i.test(text)) {
+      return res.status(409).json({
+        mensaje: text,
+        codigo: 'CONSECUTIVO_DUPLICADO',
+      });
+    }
 
     return res.status(isValidation ? 400 : 500).json({
       mensaje:
-        error.sqlMessage ||
-        error.message ||
+        text ||
         'No se guardó el contrato. Ningún dato fue registrado. Verifique el formulario y el archivo plano.',
       error: error.message,
     });

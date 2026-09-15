@@ -146,8 +146,10 @@ const siguienteConsecutivo = async (req, res) => {
       }
       const prefijo = empresa === "2" ? "HS" : "SM";
       const floor = REMISION_FLOOR[prefijo];
-      /** Evita basura local tipo 23423423; remisiones reales ~4-6 dígitos. */
-      const MAX_DIGITS = 6;
+      // Dígitos del piso (+1 margen de crecimiento). Evita basura tipo SM192304 / HS21031.
+      const maxDigits = String(floor).length + 1;
+      // Techo duro: no aceptar números > 2× piso (datos erróneos / pruebas).
+      const maxReasonable = floor * 2;
 
       const rows = await ejecutarQuery(
         `SELECT
@@ -166,24 +168,19 @@ const siguienteConsecutivo = async (req, res) => {
         const raw = String(r.remision_material ?? "").trim().toUpperCase();
         if (!raw) continue;
 
-        const sameEmpresa = emp === empresa;
-        const startsWithPrefix = raw.startsWith(prefijo);
-        if (!sameEmpresa && !startsWithPrefix) continue;
+        // Solo misma empresa + formato estricto PREFIJO + dígitos (ej. SM19441, HS2332)
+        if (emp !== empresa) continue;
+        if (!raw.startsWith(prefijo)) continue;
 
-        let numPart = raw;
-        if (raw.startsWith("SM") || raw.startsWith("HS")) {
-          if (!startsWithPrefix) continue;
-          numPart = raw.slice(2);
-        } else if (!sameEmpresa) {
-          continue;
-        }
-
-        // Solo números "limpios" (sin letras sueltas en el medio)
+        const numPart = raw.slice(prefijo.length);
         if (!/^\d+$/.test(numPart)) continue;
-        if (numPart.length > MAX_DIGITS) continue;
+        if (numPart.length > maxDigits) continue;
 
         const n = Number(numPart);
-        if (Number.isFinite(n) && n > maxNum) maxNum = n;
+        if (!Number.isFinite(n) || n <= 0) continue;
+        if (n > maxReasonable) continue;
+
+        if (n > maxNum) maxNum = n;
       }
 
       const next = Math.max(maxNum, floor - 1) + 1;

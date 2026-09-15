@@ -2,44 +2,57 @@ const XLSX = require('xlsx');
 const db = require('../../config/db');
 
 /**
- * Estructura alineada con CONSULTAS GENERAL (PDF) — producción por contrato.
- * Consume SP_REPORTE_CONTRATO(p_numero_contrato).
+ * Control General Contrato — detalle agrupado por INSUMO.
+ * Consume SP_REPORTE_CONTROL_GENERAL_CONTRATO(p_numero_contrato).
  */
 function buildProductionByContractDataset(query) {
   const {
     numero_contrato: rawNum,
     documento: rawDoc,
     tipo_corte: rawTipoCorte,
+    empresa_asociada: rawEmp,
+    tipo_informe: rawTipoInf,
   } = query;
 
   const columns = [
-    { field: 'numero_contrato', header: 'N° contrato' },
-    { field: 'item', header: 'Ítem' },
-    { field: 'descripcion', header: 'Descripción' },
+    { field: 'ref', header: 'REF' },
+    { field: 'insumo', header: 'Insumo' },
     { field: 'um', header: 'UM' },
-    { field: 'contratado', header: 'Contratado' },
+    { field: 'contratado', header: 'Cant' },
+    { field: 'fabricado', header: 'Fabricado' },
+    { field: 'diff_fabricado', header: 'Dif. fabricado' },
+    { field: 'pct_fabricado', header: '% fabricado' },
     { field: 'entregado', header: 'Entregado' },
-    { field: 'instalado', header: 'Instalado' },
     { field: 'diff_entregado', header: 'Dif. entregado' },
-    { field: 'diff_instalado', header: 'Dif. instalado' },
     { field: 'pct_entregado', header: '% entregado' },
+    { field: 'instalado', header: 'Instalado' },
+    { field: 'diff_instalado', header: 'Dif. instalado' },
     { field: 'pct_instalado', header: '% instalado' },
+    { field: 'facturado', header: 'Facturado' },
+    { field: 'pct_facturado', header: '% facturado' },
     { field: 'estado', header: 'Estado' },
   ];
 
   const meta = {
-    reporte: 'Producción por contrato',
-    numero_contrato: rawNum && String(rawNum).trim() !== '' ? String(rawNum).trim() : null,
+    reporte: 'Control General Contrato',
+    tipo_informe:
+      rawTipoInf && String(rawTipoInf).trim() !== ''
+        ? String(rawTipoInf).trim()
+        : 'control-general-contrato',
+    numero_contrato:
+      rawNum && String(rawNum).trim() !== '' ? String(rawNum).trim() : null,
     documento: rawDoc && String(rawDoc).trim() !== '' ? String(rawDoc) : 'Todos',
-    tipo_corte: rawTipoCorte && String(rawTipoCorte).trim() !== '' ? String(rawTipoCorte) : 'Todos',
+    tipo_corte:
+      rawTipoCorte && String(rawTipoCorte).trim() !== ''
+        ? String(rawTipoCorte)
+        : 'Todos',
+    empresa_asociada:
+      rawEmp && String(rawEmp).trim() !== '' ? String(rawEmp).trim() : null,
     contrato: null,
     resumen: null,
   };
 
-  const rows = [];
-  // Sin filas de ejemplo: el front muestra encabezados; el SP rellenará.
-
-  return { columns, rows, meta };
+  return { columns, rows: [], meta };
 }
 
 function normalizeSpError(err) {
@@ -51,21 +64,47 @@ function normalizeSpError(err) {
   return { msg, isNotFound };
 }
 
+function mapDetalleInsumo(r, numeroContrato, contrato) {
+  return {
+    numero_contrato: contrato?.numero_contrato ?? numeroContrato,
+    ref: r.ref ?? null,
+    insumo: r.insumo ?? null,
+    um: r.um ?? r.UM ?? null,
+    contratado: r.contratado ?? null,
+    fabricado: r.fabricado ?? 0,
+    entregado: r.entregado ?? 0,
+    instalado: r.instalado ?? 0,
+    facturado: r.facturado ?? 0,
+    diff_fabricado: r.diff_fabricado ?? null,
+    diff_entregado: r.diff_entregado ?? null,
+    diff_instalado: r.diff_instalado ?? null,
+    diff_facturado: r.diff_facturado ?? null,
+    pct_fabricado: r.pct_fabricado ?? 0,
+    pct_entregado: r.pct_entregado ?? 0,
+    pct_instalado: r.pct_instalado ?? 0,
+    pct_facturado: r.pct_facturado ?? 0,
+    estado: r.estado ?? null,
+  };
+}
+
 function callReporteContrato(numeroContrato, cb) {
-  db.query('CALL SP_REPORTE_CONTRATO(?)', [numeroContrato], (err, results) => {
-    if (err) return cb(err);
+  db.query(
+    'CALL SP_REPORTE_CONTROL_GENERAL_CONTRATO(?)',
+    [numeroContrato],
+    (err, results) => {
+      if (err) return cb(err);
 
-    // mysql2 retorna: [rs0, rs1, rs2, ... okPackets]
-    const contratoRows = Array.isArray(results?.[0]) ? results[0] : [];
-    const detalleRows = Array.isArray(results?.[1]) ? results[1] : [];
-    const resumenRows = Array.isArray(results?.[2]) ? results[2] : [];
+      const contratoRows = Array.isArray(results?.[0]) ? results[0] : [];
+      const detalleRows = Array.isArray(results?.[1]) ? results[1] : [];
+      const resumenRows = Array.isArray(results?.[2]) ? results[2] : [];
 
-    return cb(null, {
-      contrato: contratoRows?.[0] ?? null,
-      detalle: detalleRows ?? [],
-      resumen: resumenRows?.[0] ?? null,
-    });
-  });
+      return cb(null, {
+        contrato: contratoRows?.[0] ?? null,
+        detalle: detalleRows ?? [],
+        resumen: resumenRows?.[0] ?? null,
+      });
+    }
+  );
 }
 
 function normalizeCarteraSpRow(r) {
@@ -281,20 +320,9 @@ const getProductionByContractPreview = (req, res) => {
         });
       }
 
-      const mappedRows = (data.detalle || []).map((r) => ({
-        numero_contrato: data.contrato?.numero_contrato ?? numeroContrato,
-        item: r.item ?? null,
-        descripcion: r.descripcion ?? null,
-        um: r.um ?? r.UM ?? null,
-        contratado: r.contratado ?? null,
-        entregado: r.entregado ?? null,
-        instalado: r.instalado ?? null,
-        diff_entregado: r.diff_entregado ?? null,
-        diff_instalado: r.diff_instalado ?? null,
-        pct_entregado: r.pct_entregado ?? null,
-        pct_instalado: r.pct_instalado ?? null,
-        estado: r.estado ?? null,
-      }));
+      const mappedRows = (data.detalle || []).map((r) =>
+        mapDetalleInsumo(r, numeroContrato, data.contrato)
+      );
 
       return res.status(200).json({
         code: 1,
@@ -553,20 +581,7 @@ const exportProductionByContract = (req, res) => {
       const aoa = [headers];
 
       (data.detalle || []).forEach((row) => {
-        const rowObj = {
-          numero_contrato: data.contrato?.numero_contrato ?? numeroContrato,
-          item: row.item ?? '',
-          descripcion: row.descripcion ?? '',
-          um: row.um ?? row.UM ?? '',
-          contratado: row.contratado ?? '',
-          entregado: row.entregado ?? '',
-          instalado: row.instalado ?? '',
-          diff_entregado: row.diff_entregado ?? '',
-          diff_instalado: row.diff_instalado ?? '',
-          pct_entregado: row.pct_entregado ?? '',
-          pct_instalado: row.pct_instalado ?? '',
-          estado: row.estado ?? '',
-        };
+        const rowObj = mapDetalleInsumo(row, numeroContrato, data.contrato);
         aoa.push(columns.map((c) => rowObj[c.field] ?? ''));
       });
 
@@ -586,21 +601,25 @@ const exportProductionByContract = (req, res) => {
         aoa.push([]);
         aoa.push(['Resumen general', '']);
         aoa.push(['Total contratado', data.resumen.total_contratado ?? '']);
+        aoa.push(['Total fabricado', data.resumen.total_fabricado ?? '']);
         aoa.push(['Total entregado', data.resumen.total_entregado ?? '']);
         aoa.push(['Total instalado', data.resumen.total_instalado ?? '']);
+        aoa.push(['Total facturado', data.resumen.total_facturado ?? 0]);
+        aoa.push(['% fabricado', data.resumen.pct_fabricado ?? '']);
         aoa.push(['% entregado', data.resumen.pct_entregado ?? '']);
         aoa.push(['% instalado', data.resumen.pct_instalado ?? '']);
+        aoa.push(['% facturado', data.resumen.pct_facturado ?? 0]);
         aoa.push(['% pendiente', data.resumen.pct_pendiente ?? '']);
       }
 
       const ws = XLSX.utils.aoa_to_sheet(aoa);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Producción x contrato');
+      XLSX.utils.book_append_sheet(wb, ws, 'Control General');
       const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
       res.setHeader(
         'Content-Disposition',
-        `attachment; filename=informe-produccion-por-contrato-${numeroContrato}.xlsx`
+        `attachment; filename=informe-control-general-contrato-${numeroContrato}.xlsx`
       );
       res.setHeader(
         'Content-Type',

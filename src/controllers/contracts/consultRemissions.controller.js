@@ -146,7 +146,12 @@ const consultRemissions = (req, res) => {
 
         const finish = (eavMap = new Map()) => {
           const enriched = rows.map((r) => {
-            const numerodoc = map.get(r.remision_material) || null;
+            // Preferir numerodoc del join (SP); fallback al mapa por remision_material.
+            const numerodoc =
+              (r.numerodoc && String(r.numerodoc).trim()) ||
+              (r.plano_numerodoc && String(r.plano_numerodoc).trim()) ||
+              map.get(r.remision_material) ||
+              null;
             const eav = numerodoc ? eavMap.get(numerodoc) || {} : {};
             return {
               ...r,
@@ -158,6 +163,12 @@ const consultRemissions = (req, res) => {
               tipo_contrato: eav.tipo_contrato ?? r.tipo_contrato ?? null,
               estado: eav.estado ?? r.estado ?? null,
               elaboro: eav.elaboro ?? r.elaboro ?? null,
+              direccion_empresa:
+                eav.direccion_empresa ?? r.direccion_empresa ?? null,
+              orden_de_compra:
+                eav.orden_de_compra ?? r.orden_de_compra ?? null,
+              despacho: eav.despacho ?? r.despacho ?? null,
+              transporto: eav.transporto ?? r.transporto ?? null,
             };
           });
           return res.status(200).json({ data: enriched });
@@ -172,7 +183,8 @@ const consultRemissions = (req, res) => {
              FROM sosamet.item_documentos
             WHERE numerodoc IN (?)
               AND nombre_campo_doc IN (
-                'tipo_doc_rem', 'tipo_contrato', 'estado', 'elaboro'
+                'tipo_doc_rem', 'tipo_contrato', 'estado', 'elaboro',
+                'direccion_empresa', 'orden_de_compra', 'despacho', 'transporto'
               )`,
           [numerodocs],
           (eavErr, eavRows) => {
@@ -310,7 +322,7 @@ const updateRemission = (req, res) => {
           });
         }
         db.query(
-          `CALL sp_insertar_remisiones_plano(?, ?, ?, ?, ?, ?, ?, ?)`,
+          `CALL sp_insertar_remisiones_plano(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             clave,
             empresa || null,
@@ -320,6 +332,7 @@ const updateRemission = (req, res) => {
             detalle || null,
             observaciones || null,
             'Remisión',
+            docNumber || null,
           ],
           (insErr) => {
             if (insErr) {
@@ -341,7 +354,8 @@ const updateRemission = (req, res) => {
                   cantidad = ?,
                   um = ?,
                   detalle = ?,
-                  observaciones = ?
+                  observaciones = ?,
+                  numerodoc = COALESCE(NULLIF(TRIM(numerodoc), ''), ?)
             WHERE id = ?`,
           [
             empresa || null,
@@ -350,6 +364,7 @@ const updateRemission = (req, res) => {
             um || null,
             detalle || null,
             observaciones || null,
+            docNumber || null,
             itemId,
           ],
           (updErr, result) => {
@@ -419,14 +434,20 @@ const updateRemission = (req, res) => {
               if (!c) return cb();
               db.query(
                 `SELECT id FROM sosamet.remisiones_plano
-                  WHERE TRIM(contrato) = TRIM(?)
+                  WHERE (
+                      (numerodoc IS NOT NULL AND TRIM(numerodoc) = TRIM(?))
+                      OR (
+                        (numerodoc IS NULL OR TRIM(numerodoc) = '')
+                        AND TRIM(contrato) = TRIM(?)
+                      )
+                    )
                     AND TRIM(item) = TRIM(?)
                   LIMIT 1`,
-                [c, item],
+                [docNumber, c, item],
                 (fErr, fRows) => {
                   if (!fErr && fRows && fRows.length) return cb();
                   db.query(
-                    `CALL sp_insertar_remisiones_plano(?, ?, ?, ?, ?, ?, ?, ?)`,
+                    `CALL sp_insertar_remisiones_plano(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                       c,
                       empresa || null,
@@ -436,6 +457,7 @@ const updateRemission = (req, res) => {
                       detalle || null,
                       observaciones || null,
                       'Remisión',
+                      docNumber || null,
                     ],
                     (insErr) => {
                       if (insErr) {

@@ -73,7 +73,7 @@ const uploadExcelRemisiones = async (req, res) => {
         if (!item || !contrato) continue;
 
         await ejecutarQuery(
-          `CALL sp_insertar_remisiones_plano(?, ?, ?, ?, ?, ?, ?, ?)`,
+          `CALL sp_insertar_remisiones_plano(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             contrato,
             empresa || null,
@@ -83,6 +83,7 @@ const uploadExcelRemisiones = async (req, res) => {
             detalle,
             observaciones,
             tipo_doc,
+            null, // carga Excel sin cabecera RM
           ]
         );
         contratosInsertados.add(String(contrato).trim());
@@ -223,10 +224,10 @@ const uploadExcelRemisiones = async (req, res) => {
         );
       }
 
-      //Insertar detalle
+      //Insertar detalle amarrado a esta remisión (numerodoc)
       for (const row of detalle) {
         await ejecutarQuery(
-          `CALL sp_insertar_remisiones_plano(?, ?, ?, ?, ?, ?, ?, ?)`,
+          `CALL sp_insertar_remisiones_plano(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             numero_contrato,
             empresa_asociada,
@@ -236,6 +237,7 @@ const uploadExcelRemisiones = async (req, res) => {
             row.detalle,
             row.observaciones,
             tipo_doc,
+            numerodoc,
           ]
         );
       }

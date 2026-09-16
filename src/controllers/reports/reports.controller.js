@@ -30,7 +30,6 @@ function buildProductionByContractDataset(query) {
     { field: 'pct_instalado', header: '% instalado' },
     { field: 'facturado', header: 'Facturado' },
     { field: 'pct_facturado', header: '% facturado' },
-    { field: 'estado', header: 'Estado' },
   ];
 
   const meta = {
@@ -64,11 +63,84 @@ function normalizeSpError(err) {
   return { msg, isNotFound };
 }
 
-function mapDetalleInsumo(r, numeroContrato, contrato) {
+/** Normaliza código de insumo: BR003 y BR03 → BR3 (letra + número sin ceros a la izq.). */
+function normalizeInsumoCodeKey(code) {
+  const s = String(code ?? '')
+    .trim()
+    .toUpperCase();
+  if (!s) return '';
+  const m = s.match(/^([A-Z]+)0*(\d+)$/);
+  if (m) return `${m[1]}${Number(m[2])}`;
+  return s;
+}
+
+function looksLikeInsumoCodigo(value) {
+  return /^[A-Z]{1,4}\d{1,4}$/i.test(String(value ?? '').trim());
+}
+
+function cleanInsumoNameHint(value) {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+\d+([.,]\d+)?\s*$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
+/**
+ * Resuelve { codigo, nombre } del catálogo.
+ * El SP a veces trae el nombre (BARANDA) en `insumo` en lugar del código (BR01).
+ */
+function resolveInsumoFromCatalog(catalog, rawInsumo) {
+  const raw = String(rawInsumo ?? '').trim();
+  if (!raw || !catalog) return { codigo: raw || null, nombre: null };
+
+  const rawUp = raw.toUpperCase();
+
+  if (looksLikeInsumoCodigo(rawUp)) {
+    const byCode =
+      catalog.byCodigo.get(rawUp) ||
+      catalog.byCodigo.get(normalizeInsumoCodeKey(rawUp));
+    if (byCode) return { codigo: byCode.codigo, nombre: byCode.nombre };
+    return { codigo: rawUp, nombre: null };
+  }
+
+  const hint = cleanInsumoNameHint(rawUp);
+  if (hint && catalog.byNombre.has(hint)) {
+    const hit = catalog.byNombre.get(hint);
+    return { codigo: hit.codigo, nombre: hit.nombre };
+  }
+
+  if (hint && hint.length >= 3) {
+    const partial = catalog.list
+      .filter((i) => {
+        const n = i.nombreUp;
+        return n === hint || n.startsWith(hint) || hint.startsWith(n);
+      })
+      .sort(
+        (a, b) =>
+          a.nombre.length - b.nombre.length ||
+          a.codigo.localeCompare(b.codigo)
+      )[0];
+    if (partial) return { codigo: partial.codigo, nombre: partial.nombre };
+  }
+
+  return { codigo: rawUp, nombre: null };
+}
+
+function mapDetalleInsumo(r, numeroContrato, contrato, catalog) {
+  const raw = r.insumo != null ? String(r.insumo).trim() : '';
+  const resolved = resolveInsumoFromCatalog(catalog, raw);
+  const insumoNombre =
+    resolved.nombre ||
+    (r.insumo_nombre != null ? String(r.insumo_nombre).trim() : '') ||
+    null;
+
   return {
     numero_contrato: contrato?.numero_contrato ?? numeroContrato,
     ref: r.ref ?? null,
-    insumo: r.insumo ?? null,
+    insumo: resolved.codigo || raw || null,
+    insumo_nombre: insumoNombre,
     um: r.um ?? r.UM ?? null,
     contratado: r.contratado ?? null,
     fabricado: r.fabricado ?? 0,
@@ -83,8 +155,36 @@ function mapDetalleInsumo(r, numeroContrato, contrato) {
     pct_entregado: r.pct_entregado ?? 0,
     pct_instalado: r.pct_instalado ?? 0,
     pct_facturado: r.pct_facturado ?? 0,
-    estado: r.estado ?? null,
   };
+}
+
+/** Catálogo activo: índices por código y por nombre. */
+function loadInsumoNombreByCodigo(cb) {
+  db.query(
+    `SELECT UPPER(TRIM(codigo)) AS codigo, TRIM(nombre) AS nombre
+       FROM insumo
+      WHERE UPPER(TRIM(estado)) = 'ACTIVO'`,
+    (err, rows) => {
+      const byCodigo = new Map();
+      const byNombre = new Map();
+      const list = [];
+      if (!err) {
+        for (const row of rows || []) {
+          const code = String(row?.codigo ?? '').trim().toUpperCase();
+          const nombre = String(row?.nombre ?? '').trim();
+          if (!code || !nombre) continue;
+          const entry = { codigo: code, nombre, nombreUp: nombre.toUpperCase() };
+          list.push(entry);
+          byCodigo.set(code, entry);
+          const norm = normalizeInsumoCodeKey(code);
+          if (norm && !byCodigo.has(norm)) byCodigo.set(norm, entry);
+          const nombreUp = entry.nombreUp;
+          if (!byNombre.has(nombreUp)) byNombre.set(nombreUp, entry);
+        }
+      }
+      return cb({ byCodigo, byNombre, list });
+    }
+  );
 }
 
 function callReporteContrato(numeroContrato, cb) {
@@ -296,6 +396,17 @@ function callConsultarContratosFullAsync(params) {
   });
 }
 
+/** % entrega global (remisiones / contratado) — mismo resumen de Control General. */
+function callPctEntregadoAsync(numeroContrato) {
+  return new Promise((resolve) => {
+    callReporteContrato(numeroContrato, (err, data) => {
+      if (err || !data?.resumen) return resolve(null);
+      const n = Number(data.resumen.pct_entregado);
+      return resolve(Number.isFinite(n) ? n : null);
+    });
+  });
+}
+
 const getProductionByContractPreview = (req, res) => {
   try {
     const { columns, rows, meta } = buildProductionByContractDataset(req.query);
@@ -320,22 +431,31 @@ const getProductionByContractPreview = (req, res) => {
         });
       }
 
-      const mappedRows = (data.detalle || []).map((r) =>
-        mapDetalleInsumo(r, numeroContrato, data.contrato)
-      );
+      return loadInsumoNombreByCodigo((nombreMap) => {
+        const mappedRows = (data.detalle || []).map((r) =>
+          mapDetalleInsumo(r, numeroContrato, data.contrato, nombreMap)
+        );
 
-      return res.status(200).json({
-        code: 1,
-        message: 'OK',
-        data: {
-          columns,
-          rows: mappedRows,
-          meta: {
-            ...meta,
-            contrato: data.contrato,
-            resumen: data.resumen,
+        const pctEntregado = Number(data.resumen?.pct_entregado);
+        const pctPendiente = Number.isFinite(pctEntregado)
+          ? Math.max(0, Math.min(100, Math.round(100 - pctEntregado)))
+          : data.resumen?.pct_pendiente ?? null;
+
+        return res.status(200).json({
+          code: 1,
+          message: 'OK',
+          data: {
+            columns,
+            rows: mappedRows,
+            meta: {
+              ...meta,
+              contrato: data.contrato,
+              resumen: data.resumen
+                ? { ...data.resumen, pct_pendiente: pctPendiente }
+                : null,
+            },
           },
-        },
+        });
       });
     });
   } catch (err) {
@@ -434,9 +554,12 @@ const getCarteraPreview = (req, res) => {
 
 const getObrasActivasPreview = async (req, res) => {
   try {
-    // Resumen: contratos en estado ACTIVO para 2 empresas (1 y 2),
-    // acumulado por constructora/contrato y acumulado de saldos (SP_REPORTE_CARTERA).
+    // Resumen: contratos ACTIVO (empresa 1 y/o 2 según filtro),
+    // saldo vía SP_REPORTE_CARTERA y % ejecutado = pct_entregado de Control General.
     const buscar = req.query?.buscar ? String(req.query.buscar).trim() : null;
+    const empresaFiltro = req.query?.empresa_asociada
+      ? String(req.query.empresa_asociada).trim()
+      : null;
     const constructora = req.query?.constructora
       ? String(req.query.constructora).trim()
       : null;
@@ -450,10 +573,16 @@ const getObrasActivasPreview = async (req, res) => {
       { field: 'fecha_inicio', header: 'Fecha inicio' },
       { field: 'fecha_finalizacion', header: 'Fecha finalización' },
       { field: 'valor_contratado', header: 'Valor contratado' },
+      { field: 'ejecutado', header: 'Ejecutado' },
       { field: 'saldo', header: 'Saldo' },
       { field: 'constructora', header: 'Constructora' },
       { field: 'empresa_asociada', header: 'Empresa asociada' },
     ];
+
+    const empresas =
+      empresaFiltro === '1' || empresaFiltro === '2'
+        ? [empresaFiltro]
+        : ['1', '2'];
 
     const baseParams = [
       buscar && buscar !== '' ? buscar : null,
@@ -465,22 +594,18 @@ const getObrasActivasPreview = async (req, res) => {
       proyecto && proyecto !== '' ? proyecto : null,
     ];
 
-    const [rowsEmp1, rowsEmp2] = await Promise.all([
-      callConsultarContratosFullAsync([
-        ...baseParams.slice(0, 4),
-        '1',
-        baseParams[5],
-        baseParams[6],
-      ]),
-      callConsultarContratosFullAsync([
-        ...baseParams.slice(0, 4),
-        '2',
-        baseParams[5],
-        baseParams[6],
-      ]),
-    ]);
+    const empResults = await Promise.all(
+      empresas.map((emp) =>
+        callConsultarContratosFullAsync([
+          ...baseParams.slice(0, 4),
+          emp,
+          baseParams[5],
+          baseParams[6],
+        ])
+      )
+    );
 
-    const all = [...(rowsEmp1 || []), ...(rowsEmp2 || [])];
+    const all = empResults.flatMap((rows) => rows || []);
 
     // Dedupe por numero_contrato (un contrato puede salir repetido por detalle).
     const byContrato = new Map();
@@ -490,9 +615,10 @@ const getObrasActivasPreview = async (req, res) => {
       if (!byContrato.has(num)) byContrato.set(num, r);
     }
 
-    // Para cada contrato, consultar saldo desde SP_REPORTE_CARTERA (resultset #2: resumen.saldo_contrato).
+    // Para cada contrato: saldo (cartera) + % ejecutado (entrega remisiones).
     const contratos = Array.from(byContrato.values());
     const carteraMap = new Map();
+    const ejecutadoMap = new Map();
     await Promise.all(
       contratos.map(async (c) => {
         const num = String(c.numero_contrato).trim();
@@ -503,6 +629,8 @@ const getObrasActivasPreview = async (req, res) => {
           // Si falla un contrato, no tumbar todo el reporte.
           carteraMap.set(num, null);
         }
+        const pct = await callPctEntregadoAsync(num);
+        ejecutadoMap.set(num, pct);
       })
     );
 
@@ -520,6 +648,7 @@ const getObrasActivasPreview = async (req, res) => {
         fecha_inicio: c.fecha_inicio ?? null,
         fecha_finalizacion: c.fecha_fin ?? null,
         valor_contratado: c.valor_contrato ?? resumen?.valor_contrato ?? null,
+        ejecutado: ejecutadoMap.get(num) ?? null,
         saldo: resumen?.saldo_contrato ?? null,
         constructora: c.empresa ?? encabezado?.empresa ?? null,
         empresa_asociada: c.empresa_asociada ?? null,
@@ -535,7 +664,8 @@ const getObrasActivasPreview = async (req, res) => {
         meta: {
           reporte: 'Obras activas',
           estado: 'ACTIVO',
-          empresas: ['1', '2'],
+          empresas,
+          empresa_asociada: empresaFiltro || null,
         },
       },
     });
@@ -576,63 +706,78 @@ const exportProductionByContract = (req, res) => {
       });
     }
 
-    try {
-      const headers = columns.map((c) => c.header);
-      const aoa = [headers];
+    return loadInsumoNombreByCodigo((nombreMap) => {
+      try {
+        const headers = columns.map((c) => c.header);
+        const aoa = [headers];
 
-      (data.detalle || []).forEach((row) => {
-        const rowObj = mapDetalleInsumo(row, numeroContrato, data.contrato);
-        aoa.push(columns.map((c) => rowObj[c.field] ?? ''));
-      });
+        (data.detalle || []).forEach((row) => {
+          const rowObj = mapDetalleInsumo(
+            row,
+            numeroContrato,
+            data.contrato,
+            nombreMap
+          );
+          const display = { ...rowObj };
+          if (display.insumo && display.insumo_nombre) {
+            display.insumo = `${display.insumo} - ${display.insumo_nombre}`;
+          }
+          aoa.push(columns.map((c) => display[c.field] ?? ''));
+        });
 
-      aoa.push([]);
-      aoa.push(['Contrato', data.contrato?.numero_contrato ?? numeroContrato]);
-      if (data.contrato) {
-        aoa.push(['Empresa', data.contrato.empresa ?? '']);
-        aoa.push(['Empresa asociada', data.contrato.empresa_asociada ?? '']);
-        aoa.push(['Proyecto', data.contrato.proyecto ?? '']);
-        aoa.push(['Ciudad', data.contrato.ciudad ?? '']);
-        aoa.push(['Tipo contrato', data.contrato.tipo_contrato ?? '']);
-        aoa.push(['Descripción', data.contrato.descripcion ?? '']);
-        aoa.push(['Fecha inicio', data.contrato.fecha_inicio ?? '']);
-        aoa.push(['Fecha fin', data.contrato.fecha_fin ?? '']);
-      }
-      if (data.resumen) {
         aoa.push([]);
-        aoa.push(['Resumen general', '']);
-        aoa.push(['Total contratado', data.resumen.total_contratado ?? '']);
-        aoa.push(['Total fabricado', data.resumen.total_fabricado ?? '']);
-        aoa.push(['Total entregado', data.resumen.total_entregado ?? '']);
-        aoa.push(['Total instalado', data.resumen.total_instalado ?? '']);
-        aoa.push(['Total facturado', data.resumen.total_facturado ?? 0]);
-        aoa.push(['% fabricado', data.resumen.pct_fabricado ?? '']);
-        aoa.push(['% entregado', data.resumen.pct_entregado ?? '']);
-        aoa.push(['% instalado', data.resumen.pct_instalado ?? '']);
-        aoa.push(['% facturado', data.resumen.pct_facturado ?? 0]);
-        aoa.push(['% pendiente', data.resumen.pct_pendiente ?? '']);
+        aoa.push(['Contrato', data.contrato?.numero_contrato ?? numeroContrato]);
+        if (data.contrato) {
+          aoa.push(['Empresa', data.contrato.empresa ?? '']);
+          aoa.push(['Empresa asociada', data.contrato.empresa_asociada ?? '']);
+          aoa.push(['Proyecto', data.contrato.proyecto ?? '']);
+          aoa.push(['Ciudad', data.contrato.ciudad ?? '']);
+          aoa.push(['Tipo contrato', data.contrato.tipo_contrato ?? '']);
+          aoa.push(['Descripción', data.contrato.descripcion ?? '']);
+          aoa.push(['Fecha inicio', data.contrato.fecha_inicio ?? '']);
+          aoa.push(['Fecha fin', data.contrato.fecha_fin ?? '']);
+        }
+        if (data.resumen) {
+          const pctEnt = Number(data.resumen.pct_entregado);
+          const pctPend = Number.isFinite(pctEnt)
+            ? Math.max(0, Math.min(100, Math.round(100 - pctEnt)))
+            : data.resumen.pct_pendiente ?? '';
+          aoa.push([]);
+          aoa.push(['Resumen general', '']);
+          aoa.push(['Total contratado', data.resumen.total_contratado ?? '']);
+          aoa.push(['Total fabricado', data.resumen.total_fabricado ?? '']);
+          aoa.push(['Total entregado', data.resumen.total_entregado ?? '']);
+          aoa.push(['Total instalado', data.resumen.total_instalado ?? '']);
+          aoa.push(['Total facturado', data.resumen.total_facturado ?? 0]);
+          aoa.push(['% fabricado', data.resumen.pct_fabricado ?? '']);
+          aoa.push(['% entregado', data.resumen.pct_entregado ?? '']);
+          aoa.push(['% instalado', data.resumen.pct_instalado ?? '']);
+          aoa.push(['% facturado', data.resumen.pct_facturado ?? 0]);
+          aoa.push(['% pendiente', pctPend]);
+        }
+
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Control General');
+        const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename=informe-control-general-contrato-${numeroContrato}.xlsx`
+        );
+        res.setHeader(
+          'Content-Type',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+        return res.status(200).send(buffer);
+      } catch (err) {
+        return res.status(500).json({
+          code: 0,
+          message: 'Error al generar el archivo Excel.',
+          error: err?.message,
+        });
       }
-
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Control General');
-      const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename=informe-control-general-contrato-${numeroContrato}.xlsx`
-      );
-      res.setHeader(
-        'Content-Type',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      );
-      return res.status(200).send(buffer);
-    } catch (err) {
-      return res.status(500).json({
-        code: 0,
-        message: 'Error al generar el archivo Excel.',
-        error: err?.message,
-      });
-    }
+    });
   });
 };
 

@@ -31,8 +31,18 @@ const {
   cambiarEstadoInsumo,
   siguienteCodigo,
 } = require('../../controllers/administracion/insumos.controller');
+const inventarioCatalogo = require('../../controllers/administracion/inventarioCatalogo.controller');
 
 const router = express.Router();
+
+const validarEstado = [
+  body('estado')
+    .trim()
+    .toUpperCase()
+    .isIn(['ACTIVO', 'INACTIVO'])
+    .withMessage('Estado debe ser ACTIVO o INACTIVO'),
+  validateRequest,
+];
 
 router.get('/constructoras', listarConstructoras);
 
@@ -260,6 +270,60 @@ router.patch(
     validateRequest,
   ],
   cambiarEstadoInsumo
+);
+
+/* ---------- Inventario (catálogo propio: categorías y códigos de cuenta) ---------- */
+router.get('/inventario/categorias', inventarioCatalogo.listarCategorias);
+router.post(
+  '/inventario/categorias',
+  [
+    body('nombre').isString().trim().notEmpty().withMessage('El nombre es obligatorio'),
+    validateRequest,
+  ],
+  inventarioCatalogo.crearCategoria
+);
+router.put(
+  '/inventario/categorias/:idCategoria',
+  [
+    body('nombre').isString().trim().notEmpty().withMessage('El nombre es obligatorio'),
+    validateRequest,
+  ],
+  inventarioCatalogo.actualizarCategoria
+);
+router.patch(
+  '/inventario/categorias/:idCategoria/estado',
+  validarEstado,
+  inventarioCatalogo.cambiarEstadoCategoria
+);
+
+router.get('/inventario/materiales', inventarioCatalogo.listarMateriales);
+router.post(
+  '/inventario/materiales',
+  [
+    body('id_categoria').isInt({ min: 1 }).withMessage('La categoría es obligatoria'),
+    body('codigo')
+      .isString()
+      .trim()
+      .matches(/^[0-9]{6,10}$/)
+      .withMessage('El número de cuenta debe tener solo dígitos (6 a 10)'),
+    body('descripcion').isString().trim().notEmpty().withMessage('La descripción es obligatoria'),
+    validateRequest,
+  ],
+  inventarioCatalogo.crearMaterial
+);
+router.put(
+  '/inventario/materiales/:idMaterial',
+  [
+    body('id_categoria').isInt({ min: 1 }).withMessage('La categoría es obligatoria'),
+    body('descripcion').isString().trim().notEmpty().withMessage('La descripción es obligatoria'),
+    validateRequest,
+  ],
+  inventarioCatalogo.actualizarMaterial
+);
+router.patch(
+  '/inventario/materiales/:idMaterial/estado',
+  validarEstado,
+  inventarioCatalogo.cambiarEstadoMaterial
 );
 
 module.exports = router;

@@ -55,6 +55,7 @@ const catalogRoutes = require('./src/routes/catalog.routes');
 const administracionRoutes = require('./src/routes/administracion/administracion.routes');
 const { requireAdminOrSupervisor } = require('./src/middlewares/adminOrSupervisor.middleware');
 const reportRoutes = require('./src/routes/reports/reports.routes');
+const inventarioRoutes = require('./src/routes/inventario/inventario.routes');
 const { requireAdmin } = require('./src/middlewares/admin.middleware');
 
 const app = express();
@@ -83,6 +84,8 @@ const allowedOrigins = [
     allowedHeaders: ['Content-Type', 'Authorization']
   }));
   
+// Inventario recibe archivos planos con miles de ítems; el parser general sigue en 100kb.
+app.use('/api/inventario', express.json({ limit: '5mb' }));
 app.use(express.json());
 
 // Archivos de evidencia / adjuntos (misma carpeta que multer: sosamet_back/uploads)
@@ -154,6 +157,7 @@ app.use(
   administracionRoutes
 );
 app.use('/api/reports', authMiddleware, requireAdmin, reportRoutes);
+app.use('/api/inventario', authMiddleware, requireAdmin, inventarioRoutes);
 
 // 🔹 Middleware global de errores (después de todas las rutas)
 app.use(errorHandler);

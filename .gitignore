@@ -5,3 +5,6 @@ dist/
 
 # Scripts locales / SQL de BD (SPs, installs, patches) — no subir al repo
 scripts/
+
+# Fotos subidas desde Inventario (se crean en el servidor)
+uploads/inventario/

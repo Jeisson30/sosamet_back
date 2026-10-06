@@ -781,9 +781,546 @@ const exportProductionByContract = (req, res) => {
   });
 };
 
+/* ===================== MOVIMIENTOS GENERALES ===================== */
+
+const MOVIMIENTO_REMISIONES_COLUMNS = [
+  { field: 'fecha', header: 'FECHA' },
+  { field: 'tipo_doc', header: 'TIPO DOC.' },
+  { field: 'empresa_asociada', header: 'EMPRESA ASOCIADA' },
+  { field: 'consecutivo', header: 'CONSECUTIVO' },
+  { field: 'constructora', header: 'CONSTRUCTORA' },
+  { field: 'proyecto', header: 'PROYECTO' },
+  { field: 'tipo_contractual', header: 'TIPO CONTRACTUAL' },
+  { field: 'no_documento', header: 'No. DOCUMENTO' },
+  { field: 'insumo', header: 'INSUMO' },
+  { field: 'item', header: 'ITEM' },
+  { field: 'detalle', header: 'DETALLE' },
+  { field: 'cantidad', header: 'CANTIDAD' },
+  { field: 'um', header: 'UM' },
+  { field: 'observaciones', header: 'OBSERVACIONES' },
+  { field: 'despacho', header: 'DESPACHO' },
+  { field: 'transporto', header: 'TRANSPORTO' },
+  { field: 'usuario', header: 'USUARIO' },
+  { field: 'estado', header: 'ESTADO' },
+];
+
+const MOVIMIENTO_ACTAS_MEDIDA_COLUMNS = [
+  { field: 'fecha_creacion', header: 'FECHA CREACION' },
+  { field: 'tipo_doc', header: 'TIPO DOC.' },
+  { field: 'empresa_asociada', header: 'EMPRESA ASOCIADA' },
+  { field: 'consecutivo', header: 'CONSECUTIVO' },
+  { field: 'constructora', header: 'CONSTRUCTORA' },
+  { field: 'proyecto', header: 'PROYECTO' },
+  { field: 'tipo_contractual', header: 'TIPO CONTRACTUAL' },
+  { field: 'no_documento', header: 'No. DOCUMENTO' },
+  { field: 'fecha_acta', header: 'FECHA ACTA' },
+  { field: 'disenador', header: 'DISEÑADOR ENCARGADO' },
+  { field: 'entrega_plano', header: 'ENTREGA PLANO' },
+  { field: 'insumo', header: 'INSUMO' },
+  { field: 'item', header: 'ITEM' },
+  { field: 'detalle', header: 'DETALLE' },
+  { field: 'cantidad', header: 'CANTIDAD' },
+  { field: 'um', header: 'UM' },
+  { field: 'ancho', header: 'ANCHO' },
+  { field: 'alto', header: 'ALTO' },
+  { field: 'fondo', header: 'FONDO' },
+  { field: 'observaciones', header: 'OBSERVACIONES' },
+  { field: 'usuario', header: 'USUARIO' },
+  { field: 'estado', header: 'ESTADO' },
+];
+
+const MOVIMIENTO_CONTRATOS_COLUMNS = [
+  { field: 'fecha_creacion', header: 'FECHA CREACIÓN' },
+  { field: 'tipo_doc', header: 'TIPO DOC.' },
+  { field: 'tipo_contractual', header: 'TIPO CONTRACTUAL' },
+  { field: 'no_documento', header: 'No. DOCUMENTO' },
+  { field: 'tipo_contrato', header: 'TIPO DE CONTRATO' },
+  { field: 'constructora', header: 'CONSTRUCTORA' },
+  { field: 'proyecto', header: 'PROYECTO' },
+  { field: 'estado', header: 'ESTADO' },
+  { field: 'empresa_asociada', header: 'EMPRESA ASOCIADA' },
+  { field: 'fecha_inicio', header: 'FECHA INICIO' },
+  { field: 'fecha_fin', header: 'FECHA FIN' },
+  { field: 'encargado', header: 'ENCARGADO' },
+  { field: 'ciudad', header: 'CIUDAD' },
+  { field: 'ref', header: 'REF.' },
+  { field: 'insumo', header: 'INSUMO' },
+  { field: 'item', header: 'ITEM' },
+  { field: 'detalle', header: 'DETALLE' },
+  { field: 'cant', header: 'CANT' },
+  { field: 'um', header: 'UM' },
+  { field: 'ancho', header: 'ANCHO' },
+  { field: 'alto', header: 'ALTO' },
+  { field: 'valor_base', header: 'VALOR BASE' },
+  { field: 'porc_adm', header: '% ADM' },
+  { field: 'vr_adm', header: 'VR ADM' },
+  { field: 'porc_imp', header: '% IMP' },
+  { field: 'vr_imp', header: 'VR IMP' },
+  { field: 'porc_ut', header: '% UT' },
+  { field: 'vr_ut', header: 'VR UT' },
+  { field: 'porc_iva', header: '% IVA' },
+  { field: 'vr_iva', header: 'VR IVA' },
+  { field: 'vr_total', header: 'VR. TOTAL' },
+  { field: 'usuario', header: 'USUARIO' },
+];
+
+const MOVIMIENTO_HISTORIAL_CONTRATOS_COLUMNS = [
+  { field: 'constructora', header: 'CONSTRUCTORA' },
+  { field: 'proyecto', header: 'PROYECTO' },
+  { field: 'tipo_contractual', header: 'TIPO CONTRACTUAL' },
+  { field: 'no_documento', header: 'No. DOCUMENTO' },
+  { field: 'tipo', header: 'TIPO' },
+  { field: 'descripcion', header: 'DESCRIPCIÓN' },
+  { field: 'estado', header: 'ESTADO' },
+  { field: 'empresa_asociada', header: 'EMPRESA ASOCIADA' },
+  { field: 'fecha_inicio', header: 'FECHA INICIO' },
+  { field: 'fecha_fin', header: 'FECHA FIN' },
+  { field: 'ciudad', header: 'CIUDAD PROYECTO' },
+  { field: 'valor_contrato', header: 'VALOR CONTRATO' },
+  { field: 'anticipo', header: 'ANTICIPO' },
+  { field: 'saldo', header: 'SALDO' },
+  { field: 'encargado', header: 'ENCARGADO' },
+  { field: 'usuario', header: 'USUARIO' },
+];
+
+/** Valores de tipo_contrato que el legado guardó en tipo_doc_catalogo. */
+const TIPO_CONTRATO_SERVICIO = /^(suministro|instalaci[oó]n|suministro e instalaci[oó]n)$/i;
+
+const TIPO_CONTRACTUAL_LABELS = {
+  CONTRATO: 'Contrato',
+  COTIZACION: 'Cotización',
+  OFERTAM: 'Oferta Mercantil',
+  ORDENDC: 'Orden De Compra',
+  ORDENDT: 'Orden De Trabajo',
+  OTRO: 'Otro',
+};
+
+function normalizeDocumentoKey(raw) {
+  return String(raw ?? '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function cleanParam(value) {
+  if (value == null) return null;
+  const s = String(value).trim();
+  return s === '' ? null : s;
+}
+
+function formatFechaDMY(value) {
+  if (!value) return '';
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    const d = String(value.getDate()).padStart(2, '0');
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    return `${d}/${m}/${value.getFullYear()}`;
+  }
+  const iso = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return iso ? `${iso[3]}/${iso[2]}/${iso[1]}` : String(value);
+}
+
+function toCantidad(value) {
+  const s = String(value ?? '').trim();
+  if (/^-?\d+([.,]\d+)?$/.test(s)) return Number(s.replace(',', '.'));
+  return s;
+}
+
+function loadEmpresasNombreMap(cb) {
+  db.query('CALL sp_consultar_empresas()', (err, results) => {
+    const map = new Map();
+    if (!err) {
+      for (const e of (results && results[0]) || []) {
+        if (e?.id != null) map.set(String(e.id), String(e.nombre_empresa ?? '').trim());
+      }
+    }
+    return cb(map);
+  });
+}
+
+/** "código - nombre" del catálogo; si no hay insumo, el detalle del ítem. */
+function insumoConRespaldo(catalog, insumoRef, detalle) {
+  const raw = insumoRef != null ? String(insumoRef).trim() : '';
+  if (raw) {
+    const resolved = resolveInsumoFromCatalog(catalog, raw);
+    const label = resolved.nombre
+      ? `${resolved.codigo} - ${resolved.nombre}`
+      : resolved.codigo || raw;
+    if (label) return label;
+  }
+  return detalle != null ? String(detalle).trim() : '';
+}
+
+function labelTipoContractual(value) {
+  const key = String(value ?? '').trim().toUpperCase();
+  return TIPO_CONTRACTUAL_LABELS[key] || value || '';
+}
+
+function mapMovimientoRemisionRow(r, catalog, empresas) {
+  const insumo = insumoConRespaldo(catalog, r.insumo_ref, r.detalle);
+  const empId = r.empresa_asociada != null ? String(r.empresa_asociada).trim() : '';
+
+  return {
+    id: r.id,
+    numerodoc: r.numerodoc ?? r.plano_numerodoc ?? null,
+    fecha: formatFechaDMY(r.fecha),
+    tipo_doc: 'REMISIÓN',
+    empresa_asociada: empresas.get(empId) || empId,
+    consecutivo: r.consecutivo ?? '',
+    constructora: r.constructora ?? '',
+    proyecto: r.proyecto ?? '',
+    tipo_contractual: labelTipoContractual(r.tipo_contrato),
+    no_documento: r.no_documento ?? '',
+    numero_contrato: r.numero_contrato ?? '',
+    insumo,
+    item: r.item ?? '',
+    detalle: r.detalle ?? '',
+    cantidad: toCantidad(r.cantidad),
+    um: r.um ?? '',
+    observaciones: r.observaciones ?? '',
+    despacho: r.despacho ?? '',
+    transporto: r.transporto ?? '',
+    usuario: r.usuario ?? '',
+    estado: r.estado ?? 'Activo',
+  };
+}
+
+function mapMovimientoActaMedidaRow(r, catalog, empresas) {
+  const empId = r.empresa_asociada != null ? String(r.empresa_asociada).trim() : '';
+
+  return {
+    id: r.id,
+    numerodoc: r.consecutivo ?? null,
+    fecha_creacion: formatFechaDMY(r.fecha_creacion),
+    tipo_doc: 'ACTA DE MEDIDA',
+    empresa_asociada: empId ? empresas.get(empId) || empId : 'NO ASOCIADA',
+    consecutivo: r.consecutivo ?? '',
+    constructora: r.constructora ?? '',
+    proyecto: r.proyecto ?? '',
+    tipo_contractual: labelTipoContractual(r.tipo_contrato),
+    no_documento: r.no_documento ?? '',
+    fecha_acta: formatFechaDMY(r.fecha_acta),
+    disenador: r.disenador ?? '',
+    entrega_plano: formatFechaDMY(r.entrega_plano),
+    insumo: insumoConRespaldo(catalog, r.insumo_ref, r.detalle),
+    item: r.item ?? '',
+    detalle: r.detalle ?? '',
+    cantidad: toCantidad(r.cantidad),
+    um: r.um ?? '',
+    ancho: toCantidad(r.ancho),
+    alto: toCantidad(r.alto),
+    fondo: toCantidad(r.fondo),
+    observaciones: r.observaciones ?? '',
+    usuario: r.usuario ?? '',
+    estado: r.estado ?? '',
+  };
+}
+
+/** Porcentaje guardado como fracción (0.19) → 19; si ya viene en escala 0-100 se deja. */
+function toPorcentaje(value) {
+  const n = toCantidad(value);
+  if (typeof n !== 'number') return n;
+  return Math.abs(n) <= 1 ? Math.round(n * 10000) / 100 : n;
+}
+
+/** Texto del plano: el legado guardó la cadena "null"/"NULL" en celdas vacías. */
+function textoPlano(value) {
+  const s = value != null ? String(value).trim() : '';
+  return s.toLowerCase() === 'null' ? '' : s;
+}
+
+function tipoContractualContrato(catalogo, docContratista) {
+  if (catalogo && !TIPO_CONTRATO_SERVICIO.test(catalogo)) return catalogo;
+  const vinculo = normalizeDocumentoKey(docContratista);
+  return TIPO_CONTRACTUAL_LABELS[vinculo] ? vinculo : 'Contrato';
+}
+
+function mapMovimientoContratoRow(r, catalog, empresas) {
+  const empId = r.empresa_asociada != null ? String(r.empresa_asociada).trim() : '';
+  const catalogo = String(r.tipo_doc_catalogo ?? '').trim();
+  const catalogoEsServicio = TIPO_CONTRATO_SERVICIO.test(catalogo);
+  const tipoContrato = String(r.tipo_contrato ?? '').trim();
+  const detalle = textoPlano(r.detalle);
+  const tieneItem = !!r.origen;
+
+  return {
+    id: r.origen ? `${r.origen}-${r.item_id}` : r.numerodoc,
+    numerodoc: r.numerodoc ?? null,
+    fecha_creacion: formatFechaDMY(r.fecha_creacion),
+    tipo_doc: 'CONTRATO',
+    tipo_contractual: labelTipoContractual(
+      tipoContractualContrato(catalogo, r.tipo_doc_contratista)
+    ),
+    no_documento: r.no_documento ?? '',
+    tipo_contrato: tipoContrato || (catalogoEsServicio ? catalogo : ''),
+    constructora: r.constructora ?? '',
+    proyecto: r.proyecto ?? '',
+    estado: r.estado ?? 'Activo',
+    empresa_asociada: empId ? empresas.get(empId) || empId : 'NO ASOCIADA',
+    fecha_inicio: formatFechaDMY(r.fecha_inicio),
+    fecha_fin: formatFechaDMY(r.fecha_fin),
+    encargado: r.encargado ?? '',
+    ciudad: r.ciudad ?? '',
+    ref: textoPlano(r.ref),
+    insumo: tieneItem ? insumoConRespaldo(catalog, textoPlano(r.insumo_ref), detalle) : '',
+    item: textoPlano(r.item),
+    detalle,
+    cant: toCantidad(r.cant),
+    um: textoPlano(r.um),
+    ancho: toCantidad(r.ancho),
+    alto: toCantidad(r.alto),
+    valor_base: toCantidad(r.valor_base),
+    porc_adm: toPorcentaje(r.porc_adm),
+    vr_adm: toCantidad(r.vr_adm),
+    porc_imp: toPorcentaje(r.porc_imp),
+    vr_imp: toCantidad(r.vr_imp),
+    porc_ut: toPorcentaje(r.porc_ut),
+    vr_ut: toCantidad(r.vr_ut),
+    porc_iva: toPorcentaje(r.porc_iva),
+    vr_iva: toCantidad(r.vr_iva),
+    vr_total: toCantidad(r.vr_total),
+    usuario: r.usuario ?? '',
+  };
+}
+
+/**
+ * Monto digitado en el formulario ("100000000", "$ 100.000.000", "1.031.130,50") → número.
+ * Vacío o no numérico → null.
+ */
+function parseMoneda(value) {
+  if (value == null) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  let s = String(value).replace(/[^\d.,-]/g, '');
+  if (!s) return null;
+  const lastComma = s.lastIndexOf(',');
+  const lastDot = s.lastIndexOf('.');
+  if (lastComma > -1 && lastDot > -1) {
+    const dec = lastComma > lastDot ? ',' : '.';
+    const miles = dec === ',' ? '.' : ',';
+    s = s.split(miles).join('').replace(dec, '.');
+  } else if (lastComma > -1 || lastDot > -1) {
+    const sep = lastComma > -1 ? ',' : '.';
+    const partes = s.split(sep);
+    const esMiles = partes.length > 2 || partes[partes.length - 1].length === 3;
+    s = esMiles ? partes.join('') : partes.join('.');
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function mapMovimientoHistorialContratoRow(r, _catalog, empresas) {
+  const empId = r.empresa_asociada != null ? String(r.empresa_asociada).trim() : '';
+  const catalogo = String(r.tipo_doc_catalogo ?? '').trim();
+  const tipoContrato = String(r.tipo_contrato ?? '').trim();
+  const valorDigitado = parseMoneda(r.valor_contrato_txt);
+  const valorContrato = valorDigitado ?? parseMoneda(r.total_items);
+  const facturado = parseMoneda(r.total_facturado) ?? 0;
+  const saldo =
+    valorContrato != null ? Math.round((valorContrato - facturado) * 100) / 100 : '';
+
+  return {
+    id: r.numerodoc,
+    numerodoc: r.numerodoc ?? null,
+    constructora: r.constructora ?? '',
+    proyecto: r.proyecto ?? '',
+    tipo_contractual: labelTipoContractual(
+      tipoContractualContrato(catalogo, r.tipo_doc_contratista)
+    ),
+    no_documento: r.no_documento ?? '',
+    tipo: tipoContrato || (TIPO_CONTRATO_SERVICIO.test(catalogo) ? catalogo : ''),
+    descripcion: r.descripcion ?? '',
+    estado: r.estado ?? 'Activo',
+    empresa_asociada: empId ? empresas.get(empId) || empId : 'NO ASOCIADA',
+    fecha_inicio: formatFechaDMY(r.fecha_inicio),
+    fecha_fin: formatFechaDMY(r.fecha_fin),
+    ciudad: r.ciudad ?? '',
+    valor_contrato: valorContrato ?? '',
+    anticipo: parseMoneda(r.anticipo_txt) ?? '',
+    saldo,
+    encargado: r.encargado ?? '',
+    usuario: r.usuario ?? '',
+  };
+}
+
+/** Documentos de Movimientos Generales con informe implementado (clave = Documento normalizado). */
+const MOVIMIENTO_DOCUMENTOS = {
+  CONTRATO: {
+    nombre: 'Movimiento Contratos',
+    hoja: 'CONTRATO',
+    archivo: 'movimiento-contratos',
+    sp: 'SP_REPORTE_MOVIMIENTO_CONTRATOS',
+    columns: MOVIMIENTO_CONTRATOS_COLUMNS,
+    mapRow: mapMovimientoContratoRow,
+  },
+  'HISTORIAL CONTRATOS': {
+    nombre: 'Movimiento Historial Contratos',
+    hoja: 'HISTORIAL CONTRATOS',
+    archivo: 'movimiento-historial-contratos',
+    sp: 'SP_REPORTE_MOVIMIENTO_HISTORIAL_CONTRATOS',
+    columns: MOVIMIENTO_HISTORIAL_CONTRATOS_COLUMNS,
+    mapRow: mapMovimientoHistorialContratoRow,
+  },
+  REMISIONES: {
+    nombre: 'Movimiento Remisiones',
+    hoja: 'REMISIONES',
+    archivo: 'movimiento-remisiones',
+    sp: 'SP_REPORTE_MOVIMIENTO_REMISIONES',
+    columns: MOVIMIENTO_REMISIONES_COLUMNS,
+    mapRow: mapMovimientoRemisionRow,
+  },
+  'ACTAS DE MEDIDA': {
+    nombre: 'Movimiento Actas de Medida',
+    hoja: 'ACTAS DE MEDIDA',
+    archivo: 'movimiento-actas-de-medida',
+    sp: 'SP_REPORTE_MOVIMIENTO_ACTAS_MEDIDA',
+    columns: MOVIMIENTO_ACTAS_MEDIDA_COLUMNS,
+    mapRow: mapMovimientoActaMedidaRow,
+  },
+};
+
+/** Todos los SP de movimientos comparten la misma firma de 7 filtros. */
+function buildMovimientoParams(query) {
+  return [
+    cleanParam(query?.fecha_desde),
+    cleanParam(query?.fecha_hasta),
+    cleanParam(query?.empresa_asociada),
+    cleanParam(query?.constructora),
+    cleanParam(query?.proyecto),
+    cleanParam(query?.numero_contrato),
+    cleanParam(query?.trabajador),
+  ];
+}
+
+function callMovimiento(doc, query, cb) {
+  db.query(
+    `CALL ${doc.sp}(?, ?, ?, ?, ?, ?, ?)`,
+    buildMovimientoParams(query),
+    (err, results) => {
+      if (err) return cb(err);
+      const raw = Array.isArray(results?.[0]) ? results[0] : [];
+      return loadInsumoNombreByCodigo((catalog) =>
+        loadEmpresasNombreMap((empresas) =>
+          cb(
+            null,
+            raw.map((r) => doc.mapRow(r, catalog, empresas))
+          )
+        )
+      );
+    }
+  );
+}
+
+/** Resuelve el documento pedido; responde 400 si falta o aún no está implementado. */
+function resolveMovimientoDocumento(req, res) {
+  const key = normalizeDocumentoKey(req.query?.documento);
+  if (!key) {
+    res.status(400).json({
+      code: 0,
+      message: 'Seleccione el documento para generar el movimiento.',
+    });
+    return null;
+  }
+  const def = MOVIMIENTO_DOCUMENTOS[key];
+  if (!def) {
+    res.status(400).json({
+      code: 0,
+      message: `El movimiento de «${req.query.documento}» estará disponible próximamente.`,
+    });
+    return null;
+  }
+  return { key, ...def };
+}
+
+const getMovimientosPreview = (req, res) => {
+  const doc = resolveMovimientoDocumento(req, res);
+  if (!doc) return undefined;
+
+  return callMovimiento(doc, req.query, (err, rows) => {
+    if (err) {
+      return res.status(500).json({
+        code: 0,
+        message: err.sqlMessage || err.message || 'Error al consultar el movimiento.',
+      });
+    }
+    return res.status(200).json({
+      code: 1,
+      message: 'OK',
+      data: {
+        columns: doc.columns,
+        rows,
+        meta: {
+          reporte: doc.nombre,
+          documento: doc.key,
+          total_items: rows.length,
+          total_documentos: new Set(rows.map((r) => r.numerodoc).filter(Boolean)).size,
+        },
+      },
+    });
+  });
+};
+
+const exportMovimientos = (req, res) => {
+  const doc = resolveMovimientoDocumento(req, res);
+  if (!doc) return undefined;
+
+  return callMovimiento(doc, req.query, (err, rows) => {
+    if (err) {
+      return res.status(500).json({
+        code: 0,
+        message: err.sqlMessage || err.message || 'Error al consultar el movimiento.',
+      });
+    }
+    try {
+      const aoa = [doc.columns.map((c) => c.header)];
+      rows.forEach((row) => {
+        aoa.push(doc.columns.map((c) => row[c.field] ?? ''));
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = doc.columns.map((c) => {
+        const longest = rows.reduce(
+          (max, r) => Math.max(max, String(r[c.field] ?? '').length),
+          c.header.length
+        );
+        return { wch: Math.min(Math.max(longest + 2, 10), 50) };
+      });
+      ws['!autofilter'] = {
+        ref: XLSX.utils.encode_range({
+          s: { r: 0, c: 0 },
+          e: { r: Math.max(rows.length, 1), c: doc.columns.length - 1 },
+        }),
+      };
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, doc.hoja);
+      const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+      const stamp = new Date().toISOString().slice(0, 10);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename=${doc.archivo}-${stamp}.xlsx`
+      );
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      return res.status(200).send(buffer);
+    } catch (e) {
+      return res.status(500).json({
+        code: 0,
+        message: 'Error al generar el archivo Excel.',
+        error: e?.message,
+      });
+    }
+  });
+};
+
 module.exports = {
   getProductionByContractPreview,
   exportProductionByContract,
   getCarteraPreview,
   getObrasActivasPreview,
+  getMovimientosPreview,
+  exportMovimientos,
 };

@@ -153,7 +153,25 @@ const loadItemsContrato = async (numerodoc) => {
     alto_contrato: r.alto_contrato != null ? Number(r.alto_contrato) : null,
   }));
 
-  return await enrichItemsWithCatalog(raw);
+  // El acumulado de actas es por código de ítem: un ítem repetido (AIU + IVA o filas
+  // duplicadas) debe ser una sola fila con la cantidad contratada sumada.
+  const porItem = new Map();
+  for (const it of raw) {
+    const previo = porItem.get(it.item);
+    if (!previo) {
+      porItem.set(it.item, { ...it });
+      continue;
+    }
+    if (it.cantidad_contratada != null && Number.isFinite(it.cantidad_contratada)) {
+      previo.cantidad_contratada =
+        (previo.cantidad_contratada ?? 0) + it.cantidad_contratada;
+    }
+    if (!previo.insumo && it.insumo) previo.insumo = it.insumo;
+    if (!previo.detalle && it.detalle) previo.detalle = it.detalle;
+    if (!previo.um && it.um) previo.um = it.um;
+  }
+
+  return await enrichItemsWithCatalog(Array.from(porItem.values()));
 };
 
 /** Cruza códigos del plano con catálogo activo (insumo / categoría). */
@@ -274,10 +292,12 @@ const loadAcumuladoActas = async (numeroContrato, tipoVinculo) => {
       FROM actas_medida_detalle amd
       LEFT JOIN item_documentos est
         ON est.numerodoc = amd.amd_consecutivo
+       AND est.tipo_doc = 'ACTAS DE MEDIDA'
        AND LOWER(est.nombre_campo_doc) = 'estado'
       WHERE TRIM(amd.amd_numero_contrato) = ?
         AND UPPER(TRIM(amd.amd_tipo_vinculo)) = ?
         AND (est.valor_campo_doc IS NULL OR TRIM(est.valor_campo_doc) <> '3')
+        AND IFNULL(amd.amd_estado, 0) <> 3
       GROUP BY TRIM(amd.amd_item)`,
     [numeroContrato, tipoVinculo]
   );
@@ -308,13 +328,16 @@ const loadActasAnteriores = async (numeroContrato, tipoVinculo) => {
       FROM actas_medida_detalle amd
       LEFT JOIN item_documentos est
         ON est.numerodoc = amd.amd_consecutivo
+       AND est.tipo_doc = 'ACTAS DE MEDIDA'
        AND LOWER(est.nombre_campo_doc) = 'estado'
       LEFT JOIN item_documentos f
         ON f.numerodoc = amd.amd_consecutivo
+       AND f.tipo_doc = 'ACTAS DE MEDIDA'
        AND LOWER(f.nombre_campo_doc) IN ('fecha_acta', 'am_fecha_acta', 'fecha acta')
       WHERE TRIM(amd.amd_numero_contrato) = ?
         AND UPPER(TRIM(amd.amd_tipo_vinculo)) = ?
         AND (est.valor_campo_doc IS NULL OR TRIM(est.valor_campo_doc) <> '3')
+        AND IFNULL(amd.amd_estado, 0) <> 3
       GROUP BY
         amd.amd_id,
         amd.amd_consecutivo,

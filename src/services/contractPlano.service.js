@@ -24,6 +24,9 @@ const getKey = (row, target) => {
   return Object.keys(row).find((key) => normalize(key) === targetNorm);
 };
 
+// Debe coincidir con item_documentos.valor_campo_doc / p_valor_campo_doc (VARCHAR(1000)).
+const MAX_VALOR_CAMPO = 1000;
+
 const insertDocumentFields = async (queryTx, tipo_doc, numerodoc, campos) => {
   if (!Array.isArray(campos) || !campos.length) {
     throw new Error('Debe enviar al menos un campo del formulario.');
@@ -34,6 +37,14 @@ const insertDocumentFields = async (queryTx, tipo_doc, numerodoc, campos) => {
 
     if (!nombre || typeof valor !== 'string') {
       throw new Error(`Campo inválido: ${nombre || 'desconocido'}`);
+    }
+
+    if (valor.length > MAX_VALOR_CAMPO) {
+      const err = new Error(
+        `El campo "${nombre}" supera el máximo de ${MAX_VALOR_CAMPO} caracteres (tiene ${valor.length}).`
+      );
+      err.statusCode = 400;
+      throw err;
     }
 
     await queryTx('CALL sp_insertar_item_documento(?, ?, ?, ?)', [

@@ -8,6 +8,9 @@ const {
   getContextoActaMedida,
   upsertGrillaActaContrato,
 } = require("../../controllers/contracts/actaMedidaContexto.controller");
+const {
+  listarDocumentosNumero,
+} = require("../../controllers/administracion/documentoNumero.controller");
 
 /**
  * @swagger
@@ -26,5 +29,28 @@ router.get("/consultar-contratos", consultarContratos);
 router.get("/contratos-filtrados", consultarContratosFiltrados);
 router.get("/contexto-acta-medida", getContextoActaMedida);
 router.post("/grilla-acta-contrato", upsertGrillaActaContrato);
+
+/**
+ * @swagger
+ * /api/contracts/documentos-numero:
+ *   get:
+ *     summary: N° de documento registrados en Administración (solo lectura, cualquier perfil autenticado)
+ *     tags:
+ *       - Contratos
+ *     parameters:
+ *       - in: query
+ *         name: id_proyecto
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: tipo_doc
+ *         schema: { type: string }
+ *       - in: query
+ *         name: estado
+ *         schema: { type: string, default: ACTIVO }
+ *     responses:
+ *       200:
+ *         description: Lista de N° documento (label/value, constructora, proyecto, tipo_doc)
+ */
+router.get("/documentos-numero", listarDocumentosNumero);
 
 module.exports = router;

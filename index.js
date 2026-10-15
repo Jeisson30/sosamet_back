@@ -39,6 +39,7 @@ const consultPurchaseOrders = require('./src/routes/contracts/consultPurchaseOrd
 const consultRemissions = require('./src/routes/contracts/consultRemissions.routes')
 const consultContracts = require('./src/routes/contracts/consultContracts.routes')
 const consultAsistencia = require('./src/routes/contracts/consultAsistencia.routes')
+const otroSiRoutes = require('./src/routes/contracts/otroSi.routes');
 const uploadExcelRemisiones = require('./src/routes/contracts/uploadFilesRemisiones.routes')
 const uploadExcelActasPago = require('./src/routes/contracts/uploadFilesActasPago.rutes')
 const insertActasMedidaDetalle = require('./src/routes/contracts/insertActasMedidaDetalle.routes')
@@ -90,6 +91,8 @@ app.use(express.json());
 
 // Archivos de evidencia / adjuntos (misma carpeta que multer: sosamet_back/uploads)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// En producción el proxy solo envía /api/* a Node; /uploads/* lo responde el front.
+app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // 🔹 Rate limiting específico para login
 const loginLimiter = rateLimit({
@@ -132,6 +135,7 @@ app.use('/api/contracts/actas-medida', authMiddleware, consultActasMedida);
 app.use('/api/contracts/actas-disenador', authMiddleware, consultActasDisenador);
 app.use('/api/contracts/consult-contracts', authMiddleware, consultContracts);
 app.use('/api/contracts/consult-asistencia', authMiddleware, consultAsistencia);
+app.use('/api/contracts/otro-si', authMiddleware, otroSiRoutes);
 app.use('/api/contracts', authMiddleware, insertDataContract);
 app.use('/api/contracts', authMiddleware, insertContractWithPlano);
 app.use('/api/contracts', authMiddleware, getContractDetail);

@@ -5,13 +5,18 @@ const {
   insertContract,
 } = require("../../controllers/contracts/insertContract.controller");
 const { validateRequest } = require("../../middlewares/validation.middleware");
+const uploadEvidence = require("../../middlewares/uploadEvidence.middleware");
 
 /**
- * @swagger
- * tags:
- *   name: Contratos
- *   description: Endpoints para gestión de contratos
+ * JSON clásico o multipart (campos JSON + archivos con fieldname = nombre_campo_doc).
  */
+function maybeMultipart(req, res, next) {
+  const ct = String(req.headers["content-type"] || "");
+  if (ct.includes("multipart/form-data")) {
+    return uploadEvidence.any()(req, res, next);
+  }
+  return next();
+}
 
 /**
  * @swagger
@@ -19,64 +24,10 @@ const { validateRequest } = require("../../middlewares/validation.middleware");
  *   post:
  *     summary: Insertar los datos de un documento/contrato
  *     tags: [Contratos]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - tipo_doc
- *               - numerodoc
- *               - campos
- *             properties:
- *               tipo_doc:
- *                 type: string
- *                 example: Contrato
- *               numerodoc:
- *                 type: string
- *                 example: CT-20250715-001
- *               campos:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     nombre:
- *                       type: string
- *                       example: Cedula_contratista
- *                     valor:
- *                       type: string
- *                       example: "123456789"
- *     responses:
- *       200:
- *         description: Inserción procesada correctamente
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 mensaje:
- *                   type: string
- *                   example: Documento tipo "Contrato" procesado.
- *                 resultados:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       campo:
- *                         type: string
- *                         example: Cedula_contratista
- *                       mensaje:
- *                         type: string
- *                         example: SE REALIZO LA INSERCION CORRECTAMENTE.
- *       400:
- *         description: Datos inválidos
- *       500:
- *         description: Error interno del servidor
  */
-
 router.post(
   "/insert",
+  maybeMultipart,
   [
     body("tipo_doc")
       .isString()
@@ -88,17 +39,17 @@ router.post(
       .trim()
       .notEmpty()
       .withMessage("El número de documento es obligatorio"),
-    body("campos")
-      .isArray({ min: 1 })
-      .withMessage("Debe enviar al menos un campo"),
-    body("campos.*.nombre")
-      .isString()
-      .trim()
-      .notEmpty()
-      .withMessage("Cada campo debe tener un nombre"),
-    body("campos.*.valor")
-      .isString()
-      .withMessage("Cada campo debe tener un valor de tipo texto"),
+    body("campos").custom((value) => {
+      if (Array.isArray(value)) return true;
+      if (typeof value === "string") {
+        const parsed = JSON.parse(value);
+        if (!Array.isArray(parsed) || parsed.length < 1) {
+          throw new Error("Debe enviar al menos un campo");
+        }
+        return true;
+      }
+      throw new Error("Debe enviar al menos un campo");
+    }),
     validateRequest,
   ],
   insertContract

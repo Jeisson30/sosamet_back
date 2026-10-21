@@ -1,9 +1,20 @@
 const db = require('../../config/db');
+const { puedeEditarRemision } = require('../../utils/permissions');
 
 const requireAdmin = (req, res) => {
   if (!req.user || Number(req.user.id_perfil) !== 1) {
     res.status(403).json({
-      error: 'Solo un administrador puede realizar esta acción.',
+      error: 'Solo un administrador puede anular o eliminar remisiones.',
+    });
+    return false;
+  }
+  return true;
+};
+
+const requireEditorRemision = (req, res) => {
+  if (!puedeEditarRemision(req.user)) {
+    res.status(403).json({
+      error: 'No tiene permiso para editar remisiones.',
     });
     return false;
   }
@@ -206,6 +217,8 @@ const consultRemissions = (req, res) => {
 };
 
 const updateRemission = (req, res) => {
+  if (!requireEditorRemision(req, res)) return;
+
   const {
     numerodoc,
     actualizar_cabecera,

@@ -1,4 +1,8 @@
 const db = require('../../config/db');
+const {
+  aplicarRestriccionValores,
+  puedeEditarContrato,
+} = require('../../utils/permissions');
 
 const consultContractsFull = (req, res) => {
   const {
@@ -32,14 +36,26 @@ const consultContractsFull = (req, res) => {
     }
 
     const rows = results && results[0] ? results[0] : [];
-    return res.status(200).json({ data: rows });
+    return res.status(200).json(
+      aplicarRestriccionValores(req.user, { data: rows })
+    );
   });
 };
 
 const requireAdmin = (req, res) => {
   if (!req.user || Number(req.user.id_perfil) !== 1) {
     res.status(403).json({
-      error: 'Solo administradores pueden realizar esta acción sobre contratos.',
+      error: 'Solo administradores pueden anular o eliminar contratos.',
+    });
+    return false;
+  }
+  return true;
+};
+
+const requireEditorContrato = (req, res) => {
+  if (!puedeEditarContrato(req.user)) {
+    res.status(403).json({
+      error: 'No tiene permiso para editar contratos.',
     });
     return false;
   }
@@ -47,7 +63,7 @@ const requireAdmin = (req, res) => {
 };
 
 const updateContractFull = (req, res) => {
-  if (!requireAdmin(req, res)) return;
+  if (!requireEditorContrato(req, res)) return;
 
   const { numerodoc, cabecera, detalle } = req.body || {};
 

@@ -19,6 +19,7 @@ const { errorHandler } = require('./src/middlewares/error.middleware');
 // 🔹 Importar rutas
 const roleRoutes = require("./src/routes/role.routes");
 const userRoutes = require('./src/routes/user/createUser.routes')
+const catalogUserRoutes = require('./src/routes/user/catalogUser.routes')
 const getUsers = require('./src/routes/user/getUser.routes')
 const changeStateUsers = require('./src/routes/user/changeStateUser.routes')
 const updateUsers = require('./src/routes/user/updateUser.routes')
@@ -39,6 +40,7 @@ const consultPurchaseOrders = require('./src/routes/contracts/consultPurchaseOrd
 const consultRemissions = require('./src/routes/contracts/consultRemissions.routes')
 const consultContracts = require('./src/routes/contracts/consultContracts.routes')
 const consultAsistencia = require('./src/routes/contracts/consultAsistencia.routes')
+const asistenciaVisit = require('./src/routes/contracts/asistenciaVisit.routes')
 const otroSiRoutes = require('./src/routes/contracts/otroSi.routes');
 const uploadExcelRemisiones = require('./src/routes/contracts/uploadFilesRemisiones.routes')
 const uploadExcelActasPago = require('./src/routes/contracts/uploadFilesActasPago.rutes')
@@ -58,6 +60,8 @@ const { requireAdminOrSupervisor } = require('./src/middlewares/adminOrSuperviso
 const reportRoutes = require('./src/routes/reports/reports.routes');
 const inventarioRoutes = require('./src/routes/inventario/inventario.routes');
 const { requireAdmin } = require('./src/middlewares/admin.middleware');
+const { requireInventarioAccess } = require('./src/middlewares/inventario.middleware');
+const { requireInformesAccess } = require('./src/middlewares/informes.middleware');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -89,10 +93,14 @@ const allowedOrigins = [
 app.use('/api/inventario', express.json({ limit: '5mb' }));
 app.use(express.json());
 
-// Archivos de evidencia / adjuntos (misma carpeta que multer: sosamet_back/uploads)
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-// En producción el proxy solo envía /api/* a Node; /uploads/* lo responde el front.
-app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
+// Archivos de evidencia / adjuntos (misma carpeta que multer)
+const { getUploadsDir } = require('./src/config/uploadsPath');
+const uploadsDir = getUploadsDir();
+// eslint-disable-next-line no-console
+console.log(`Uploads dir: ${uploadsDir}`);
+app.use('/uploads', express.static(uploadsDir));
+// En producción el proxy solo envía /api/* a Node; usar /api/uploads.
+app.use('/api/uploads', express.static(uploadsDir));
 
 // 🔹 Rate limiting específico para login
 const loginLimiter = rateLimit({
@@ -121,11 +129,12 @@ app.use('/api/auth/loginUser', loginUser);
 // Rutas protegidas (requieren Authorization: Bearer <token>)
 app.use("/api/roles", authMiddleware, roleRoutes);
 
-app.use("/api/createUser", authMiddleware, userRoutes);
-app.use('/api/getUsers', authMiddleware, getUsers);
-app.use('/api/changeStateUser', authMiddleware, changeStateUsers);
-app.use('/api/updateUser', authMiddleware, updateUsers);
-app.use('/api/deleteUser', authMiddleware, deleteUsers);
+app.use("/api/createUser", authMiddleware, requireAdmin, userRoutes);
+app.use('/api/catalogUsers', authMiddleware, requireAdmin, catalogUserRoutes);
+app.use('/api/getUsers', authMiddleware, requireAdmin, getUsers);
+app.use('/api/changeStateUser', authMiddleware, requireAdmin, changeStateUsers);
+app.use('/api/updateUser', authMiddleware, requireAdmin, updateUsers);
+app.use('/api/deleteUser', authMiddleware, requireAdmin, deleteUsers);
 
 app.use('/api/contracts/getTypeContracts', authMiddleware, typeContracts);
 app.use('/api/contracts/getTypeFields', authMiddleware, typeFields);
@@ -135,6 +144,7 @@ app.use('/api/contracts/actas-medida', authMiddleware, consultActasMedida);
 app.use('/api/contracts/actas-disenador', authMiddleware, consultActasDisenador);
 app.use('/api/contracts/consult-contracts', authMiddleware, consultContracts);
 app.use('/api/contracts/consult-asistencia', authMiddleware, consultAsistencia);
+app.use('/api/contracts/asistencia', authMiddleware, asistenciaVisit);
 app.use('/api/contracts/otro-si', authMiddleware, otroSiRoutes);
 app.use('/api/contracts', authMiddleware, insertDataContract);
 app.use('/api/contracts', authMiddleware, insertContractWithPlano);
@@ -160,8 +170,8 @@ app.use(
   requireAdminOrSupervisor,
   administracionRoutes
 );
-app.use('/api/reports', authMiddleware, requireAdmin, reportRoutes);
-app.use('/api/inventario', authMiddleware, requireAdmin, inventarioRoutes);
+app.use('/api/reports', authMiddleware, requireInformesAccess, reportRoutes);
+app.use('/api/inventario', authMiddleware, requireInventarioAccess, inventarioRoutes);
 
 // 🔹 Middleware global de errores (después de todas las rutas)
 app.use(errorHandler);

@@ -105,8 +105,9 @@ const finalizarActaMedida = async (req, res) => {
       }
 
       const file = fileByField.get(`evidencia_item_${amdId}`);
+      const { toPublicUploadPath } = require("../../config/uploadsPath");
       const evidenciaPath = file
-        ? path.posix.join("uploads", file.filename)
+        ? toPublicUploadPath(file.filename)
         : toNull(row?.evidencia_item);
 
       const consecutivoItem = toNull(row?.consecutivo_item);

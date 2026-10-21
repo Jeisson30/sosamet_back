@@ -1,11 +1,8 @@
 const multer = require("multer");
 const path = require("path");
-const fs = require("fs");
+const { getUploadsDir } = require("../config/uploadsPath");
 
-const uploadsDir = path.join(__dirname, "../../uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+const uploadsDir = getUploadsDir();
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -28,20 +25,26 @@ const allowedExt = new Set([
   ".pdf",
   ".dwg",
   ".dxf",
+  // Formularios mixtos (insert + plano / adjuntos EAV)
+  ".xlsx",
+  ".xls",
 ]);
 
 const fileFilter = (_req, file, cb) => {
   const ext = path.extname(file.originalname || "").toLowerCase();
+  const mime = String(file.mimetype || "");
   if (
     allowedExt.has(ext) ||
-    String(file.mimetype || "").startsWith("image/") ||
-    String(file.mimetype || "") === "application/pdf"
+    mime.startsWith("image/") ||
+    mime === "application/pdf" ||
+    mime.includes("spreadsheet") ||
+    mime.includes("excel")
   ) {
     cb(null, true);
   } else {
     cb(
       new Error(
-        "Solo se permiten imágenes, PDF o planos (DWG/DXF) para la evidencia."
+        "Solo se permiten imágenes, PDF, planos (DWG/DXF) o Excel."
       )
     );
   }

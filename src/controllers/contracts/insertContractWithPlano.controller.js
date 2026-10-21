@@ -10,6 +10,7 @@ const {
   validateContratoDocumentoNumero,
 } = require('../../services/contratoDocumentoNumero.service');
 const { notifyDocumentCreated } = require('../../utils/documentCreatedEmail');
+const { applyUploadedFilesToCampos } = require('../../config/uploadsPath');
 
 const unlinkSafe = (filePath) => {
   if (!filePath) return;
@@ -35,8 +36,9 @@ const parseCampos = (raw) => {
 const insertContractWithPlano = async (req, res) => {
   const tipo_doc = req.body?.tipo_doc;
   const numerodoc = req.body?.numerodoc;
-  const fileAiu = req.files?.file_aiu?.[0];
-  const fileIva = req.files?.file_iva?.[0];
+  const allFiles = Array.isArray(req.files) ? req.files : [];
+  const fileAiu = allFiles.find((f) => f.fieldname === 'file_aiu') || null;
+  const fileIva = allFiles.find((f) => f.fieldname === 'file_iva') || null;
   const tempFiles = [fileAiu?.path, fileIva?.path].filter(Boolean);
 
   try {
@@ -52,6 +54,9 @@ const insertContractWithPlano = async (req, res) => {
     } catch {
       return res.status(400).json({ mensaje: 'El campo campos no es válido.' });
     }
+
+    // Adjuntos EAV (foto1, PDF, etc.): no confundir con file_aiu / file_iva
+    campos = applyUploadedFilesToCampos(campos, allFiles);
 
     const isContrato =
       String(tipo_doc).trim().toUpperCase() === 'CONTRATO';

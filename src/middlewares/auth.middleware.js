@@ -24,6 +24,7 @@ const authMiddleware = (req, res, next) => {
       id_usuario: decoded.id_usuario,
       id_perfil: decoded.id_perfil,
       id_rol: decoded.id_rol,
+      nombre_perfil: decoded.nombre_perfil || null,
     };
     next();
   } catch (err) {

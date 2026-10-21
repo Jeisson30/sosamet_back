@@ -392,8 +392,8 @@ const updateArchivoActaMedida = (req, res) => {
     });
   }
 
-  const path = require("path");
-  const archivoPath = path.posix.join("uploads", archivo.filename);
+  const { toPublicUploadPath } = require("../../config/uploadsPath");
+  const archivoPath = toPublicUploadPath(archivo.filename);
 
   db.query(
     `UPDATE item_documentos

@@ -3,17 +3,38 @@ const { notifyDocumentCreated } = require("../../utils/documentCreatedEmail");
 const {
   assertContratoNumeroNoDuplicado,
 } = require("../../services/contratoDocumentoNumero.service");
+const { applyUploadedFilesToCampos } = require("../../config/uploadsPath");
 
 const dbp = db.promise();
 
+function parseCampos(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    return JSON.parse(raw);
+  }
+  return null;
+}
+
 const insertContract = async (req, res) => {
-  const { tipo_doc, numerodoc, campos } = req.body;
+  const tipo_doc = req.body?.tipo_doc;
+  const numerodoc = req.body?.numerodoc;
+
+  let campos;
+  try {
+    campos = parseCampos(req.body?.campos);
+  } catch {
+    return res.status(400).json({
+      mensaje: "El campo campos no es válido.",
+    });
+  }
 
   if (!tipo_doc || !numerodoc || !Array.isArray(campos)) {
     return res.status(400).json({
       mensaje: "tipo_doc, numerodoc y campos son requeridos.",
     });
   }
+
+  campos = applyUploadedFilesToCampos(campos, req.files);
 
   const doc = String(numerodoc).trim();
   const tipo = String(tipo_doc).trim();

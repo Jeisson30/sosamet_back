@@ -1,11 +1,8 @@
 const multer = require("multer");
 const path = require("path");
-const fs = require("fs");
+const { getInventarioUploadsDir } = require("../config/uploadsPath");
 
-const uploadsDir = path.join(__dirname, "../../uploads/inventario");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+const uploadsDir = getInventarioUploadsDir();
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {

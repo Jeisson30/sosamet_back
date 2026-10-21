@@ -5,7 +5,7 @@ const requireAdmin = (req, res, next) => {
   if (!req.user || Number(req.user.id_perfil) !== 1) {
     return res.status(403).json({
       code: 0,
-      message: 'Solo los administradores pueden acceder a informes.',
+      message: 'Solo los administradores pueden realizar esta acción.',
     });
   }
   next();

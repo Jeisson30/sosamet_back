@@ -196,8 +196,41 @@ const siguienteConsecutivo = async (req, res) => {
       });
     }
 
+    if (tipo === "ASISTENCIA" || tipo === "ASISTENCIAS") {
+      const AS_PREFIX = "AS";
+      const AS_FLOOR = 1;
+      const rows = await ejecutarQuery(
+        `SELECT TRIM(numerodoc) AS numerodoc,
+                MAX(CASE WHEN nombre_campo_doc = 'consecutivo'
+                         THEN TRIM(valor_campo_doc) END) AS consecutivo
+           FROM item_documentos
+          WHERE UPPER(TRIM(tipo_doc)) = 'ASISTENCIA'
+          GROUP BY numerodoc`
+      );
+      const list = Array.isArray(rows) ? rows : [];
+      let maxNum = 0;
+      const re = new RegExp(`^${AS_PREFIX}-(\\d+)$`, "i");
+      for (const r of list) {
+        const cand = String(r.consecutivo || r.numerodoc || "").trim();
+        const m = cand.match(re);
+        if (!m) continue;
+        const n = Number(m[1]);
+        if (Number.isFinite(n) && n > maxNum) maxNum = n;
+      }
+      const next = Math.max(maxNum, AS_FLOOR - 1) + 1;
+      const consecutivo = `${AS_PREFIX}-${String(next).padStart(3, "0")}`;
+      return res.status(200).json({
+        mensaje: "Siguiente consecutivo de asistencia calculado.",
+        tipo: "ASISTENCIA",
+        consecutivo,
+        numero: next,
+        prefijo: `${AS_PREFIX}-`,
+        piso: AS_FLOOR,
+      });
+    }
+
     return res.status(400).json({
-      mensaje: "tipo no soportado. Use ACTAS_DE_MEDIDA o REMISIONES.",
+      mensaje: "tipo no soportado. Use ACTAS_DE_MEDIDA, REMISIONES o ASISTENCIA.",
     });
   } catch (error) {
     console.error("❌ Error al calcular siguiente consecutivo:", error);

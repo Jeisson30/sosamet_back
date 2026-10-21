@@ -1,17 +1,15 @@
 const express = require('express');
-const upload = require('../../middlewares/upload.middleware');
+const uploadEvidence = require('../../middlewares/uploadEvidence.middleware');
 const {
   insertContractWithPlano,
 } = require('../../controllers/contracts/insertContractWithPlano.controller');
 
 const router = express.Router();
 
+// Excel (AIU/IVA) + adjuntos EAV (foto1, PDF, etc.) en la misma petición
 router.post(
   '/insert-with-plano',
-  upload.fields([
-    { name: 'file_aiu', maxCount: 1 },
-    { name: 'file_iva', maxCount: 1 },
-  ]),
+  uploadEvidence.any(),
   insertContractWithPlano
 );
 

@@ -141,8 +141,9 @@ const insertActasMedidaDetalle = async (req, res) => {
       const row = itemsConCantidad[i] || {};
       // Evidencia por ítem deprecada: archivo general del acta (archivo_acta).
       const legacyFile = fileByField.get(`evidencia_${i}`);
+      const { toPublicUploadPath } = require("../../config/uploadsPath");
       const evidenciaPath = legacyFile
-        ? path.posix.join("uploads", legacyFile.filename)
+        ? toPublicUploadPath(legacyFile.filename)
         : null;
 
       const insumoIdRaw = Number(row.insumo_id ?? row.amd_insumo_id);
@@ -175,7 +176,8 @@ const insertActasMedidaDetalle = async (req, res) => {
 
     const archivoActa = fileByField.get("archivo_acta");
     if (archivoActa) {
-      const archivoPath = path.posix.join("uploads", archivoActa.filename);
+      const { toPublicUploadPath } = require("../../config/uploadsPath");
+      const archivoPath = toPublicUploadPath(archivoActa.filename);
       await ejecutarQuery(
         `CALL sp_insertar_item_documento(?, ?, ?, ?)`,
         ["ACTAS DE MEDIDA", consecutivo, "archivo_acta", archivoPath]

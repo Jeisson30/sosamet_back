@@ -3,17 +3,39 @@ const { notifyDocumentCreated } = require("../../utils/documentCreatedEmail");
 const {
   assertContratoNumeroNoDuplicado,
 } = require("../../services/contratoDocumentoNumero.service");
+const { applyUploadedFilesToCampos } = require("../../config/uploadsPath");
 
 const dbp = db.promise();
 
+function parseCampos(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    return JSON.parse(raw);
+  }
+  return null;
+}
+
 const insertContract = async (req, res) => {
-  const { tipo_doc, numerodoc, campos, acta_plano_id } = req.body;
+  const tipo_doc = req.body?.tipo_doc;
+  const numerodoc = req.body?.numerodoc;
+  const acta_plano_id = req.body?.acta_plano_id;
+
+  let campos;
+  try {
+    campos = parseCampos(req.body?.campos);
+  } catch {
+    return res.status(400).json({
+      mensaje: "El campo campos no es válido.",
+    });
+  }
 
   if (!tipo_doc || !numerodoc || !Array.isArray(campos)) {
     return res.status(400).json({
       mensaje: "tipo_doc, numerodoc y campos son requeridos.",
     });
   }
+
+  campos = applyUploadedFilesToCampos(campos, req.files);
 
   const doc = String(numerodoc).trim();
   const tipo = String(tipo_doc).trim();
@@ -84,12 +106,11 @@ const insertContract = async (req, res) => {
     }
 
     // SOLO PARA ACTAS DE PAGO
-    if (tipo_doc === "ACTAS DE PAGO" && acta_plano_id) {
-
+    if (tipoUpper === "ACTAS DE PAGO" && acta_plano_id) {
       try {
-
-        const empresa = campos.find(c => c.nombre === "empresa")?.valor || null;
-        const observaciones = campos.find(c => c.nombre === "observaciones")?.valor || null;
+        const empresa = campos.find((c) => c.nombre === "empresa")?.valor || null;
+        const observaciones =
+          campos.find((c) => c.nombre === "observaciones")?.valor || null;
 
         const retencionesResult = await new Promise((resolve, reject) => {
           db.query(
@@ -125,24 +146,18 @@ const insertContract = async (req, res) => {
               base_retenciones = ?
             WHERE id = ?
             `,
-            [
-              numerodoc,
-              empresa,
-              observaciones,
-              baseRetenciones,
-              acta_plano_id
-            ],
+            [numerodoc, empresa, observaciones, baseRetenciones, acta_plano_id],
             (err, result) => {
               if (err) reject(err);
               else resolve(result);
             }
           );
         });
-
       } catch (errorInterno) {
         console.error("Error consolidando acta de pago:", errorInterno);
       }
     }
+
     res.status(200).json({
       mensaje: `Documento tipo "${tipo}" procesado.`,
       resultados,

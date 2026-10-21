@@ -1,4 +1,8 @@
 const db = require('../../config/db');
+const {
+  aplicarRestriccionValores,
+  puedeEditarContrato,
+} = require('../../utils/permissions');
 
 const TIPOS_OTROSI = ['FECHA', 'CANTIDAD', 'AMBOS'];
 const ESTADOS_OTROSI = ['ACTIVO', 'ANULADO'];
@@ -93,7 +97,21 @@ const responderError = (res, err, contexto) => {
 
 const requireAdmin = (req, res) => {
   if (!req.user || Number(req.user.id_perfil) !== 1) {
-    res.status(403).json({ codigo: 0, mensaje: 'Solo administradores pueden editar, anular o eliminar Otros Sí.' });
+    res.status(403).json({
+      codigo: 0,
+      mensaje: 'Solo administradores pueden anular o eliminar Otros Sí.',
+    });
+    return false;
+  }
+  return true;
+};
+
+const requireEditorOtroSi = (req, res) => {
+  if (!puedeEditarContrato(req.user)) {
+    res.status(403).json({
+      codigo: 0,
+      mensaje: 'No tiene permiso para registrar o editar Otros Sí.',
+    });
     return false;
   }
   return true;
@@ -223,7 +241,12 @@ const listarContratosActivos = async (req, res) => {
       ),
       cargarEmpresas(),
     ]);
-    return res.json({ codigo: 1, contratos: rows.map((r) => mapContrato(r, empresas)) });
+    return res.json(
+      aplicarRestriccionValores(req.user, {
+        codigo: 1,
+        contratos: rows.map((r) => mapContrato(r, empresas)),
+      })
+    );
   } catch (err) {
     return responderError(res, err, 'consultar los contratos');
   }
@@ -324,38 +347,40 @@ const contextoContrato = async (req, res) => {
     );
 
     const limpiar = (v) => (v === 'null' ? null : v);
-    return res.json({
-      codigo: 1,
-      contrato,
-      editando,
-      items: items.map((i) => ({
-        tabla_origen: i.tabla_origen,
-        id_item_origen: i.id_item_origen,
-        item: limpiar(i.item),
-        insumo: limpiar(i.insumo),
-        ref: limpiar(i.ref),
-        detalle: limpiar(i.detalle),
-        cantidad: Number(i.cantidad) || 0,
-        um: limpiar(i.um),
-        valor_unitario:
-          Number(i.cantidad) > 0 && i.valor_base != null
-            ? Math.round((Number(i.valor_base) / Number(i.cantidad)) * 100) / 100
+    return res.json(
+      aplicarRestriccionValores(req.user, {
+        codigo: 1,
+        contrato,
+        editando,
+        items: items.map((i) => ({
+          tabla_origen: i.tabla_origen,
+          id_item_origen: i.id_item_origen,
+          item: limpiar(i.item),
+          insumo: limpiar(i.insumo),
+          ref: limpiar(i.ref),
+          detalle: limpiar(i.detalle),
+          cantidad: Number(i.cantidad) || 0,
+          um: limpiar(i.um),
+          valor_unitario:
+            Number(i.cantidad) > 0 && i.valor_base != null
+              ? Math.round((Number(i.valor_base) / Number(i.cantidad)) * 100) / 100
+              : null,
+          vr_total: i.vr_total != null ? Number(i.vr_total) : null,
+        })),
+        porcentajes: {
+          AIU: refAiu
+            ? {
+                porc_adm: Number(refAiu.porc_adm) || 0,
+                porc_imp: Number(refAiu.porc_imp) || 0,
+                porc_ut: Number(refAiu.porc_ut) || 0,
+                porc_iva: Number(refAiu.porc_iva) || 0,
+              }
             : null,
-        vr_total: i.vr_total != null ? Number(i.vr_total) : null,
-      })),
-      porcentajes: {
-        AIU: refAiu
-          ? {
-              porc_adm: Number(refAiu.porc_adm) || 0,
-              porc_imp: Number(refAiu.porc_imp) || 0,
-              porc_ut: Number(refAiu.porc_ut) || 0,
-              porc_iva: Number(refAiu.porc_iva) || 0,
-            }
-          : null,
-        IVA: refIva ? { porc_iva: Number(refIva.porc_iva) || 0 } : null,
-      },
-      otrosi_previos: { total: Number(prev?.total) || 0, ultimo: prev?.ultimo ?? null },
-    });
+          IVA: refIva ? { porc_iva: Number(refIva.porc_iva) || 0 } : null,
+        },
+        otrosi_previos: { total: Number(prev?.total) || 0, ultimo: prev?.ultimo ?? null },
+      })
+    );
   } catch (err) {
     return responderError(res, err, 'consultar el contrato');
   }
@@ -469,10 +494,13 @@ const guardarOtroSi = async (req, res, idEditar) => {
   }
 };
 
-const registrarOtroSi = (req, res) => guardarOtroSi(req, res, null);
+const registrarOtroSi = (req, res) => {
+  if (!requireEditorOtroSi(req, res)) return;
+  return guardarOtroSi(req, res, null);
+};
 
 const editarOtroSi = (req, res) => {
-  if (!requireAdmin(req, res)) return;
+  if (!requireEditorOtroSi(req, res)) return;
   const id = idOtroSi(req.params.id);
   if (!id) return res.status(400).json({ codigo: 0, mensaje: 'Otro Sí inválido.' });
   return guardarOtroSi(req, res, id);
@@ -582,10 +610,16 @@ const listarOtrosSi = async (req, res) => {
         LIMIT ${MAX_FILAS}`,
       params
     );
-    return res.json({
-      codigo: 1,
-      otrosi: rows.map((r) => ({ ...r, valor_adicional: Number(r.valor_adicional) || 0, es_ultimo: !!Number(r.es_ultimo) })),
-    });
+    return res.json(
+      aplicarRestriccionValores(req.user, {
+        codigo: 1,
+        otrosi: rows.map((r) => ({
+          ...r,
+          valor_adicional: Number(r.valor_adicional) || 0,
+          es_ultimo: !!Number(r.es_ultimo),
+        })),
+      })
+    );
   } catch (err) {
     return responderError(res, err, 'consultar los Otros Sí');
   }
@@ -632,21 +666,27 @@ const detalleOtroSi = async (req, res) => {
     }
 
     const num = (v) => (v == null ? null : Number(v));
-    return res.json({
-      codigo: 1,
-      otrosi: { ...cab, valor_adicional: Number(cab.valor_adicional) || 0, es_ultimo: !!Number(cab.es_ultimo) },
-      contrato: contrato[0] ? mapContrato(contrato[0], empresas) : null,
-      items_con_actas: itemsConActas,
-      detalle: detalle.map((d) => ({
-        ...d,
-        cantidad_anterior: num(d.cantidad_anterior),
-        cantidad_adicional: num(d.cantidad_adicional),
-        cantidad_nueva: num(d.cantidad_nueva),
-        valor_unitario: num(d.valor_unitario),
-        vr_total_anterior: num(d.vr_total_anterior),
-        vr_total_nuevo: num(d.vr_total_nuevo),
-      })),
-    });
+    return res.json(
+      aplicarRestriccionValores(req.user, {
+        codigo: 1,
+        otrosi: {
+          ...cab,
+          valor_adicional: Number(cab.valor_adicional) || 0,
+          es_ultimo: !!Number(cab.es_ultimo),
+        },
+        contrato: contrato[0] ? mapContrato(contrato[0], empresas) : null,
+        items_con_actas: itemsConActas,
+        detalle: detalle.map((d) => ({
+          ...d,
+          cantidad_anterior: num(d.cantidad_anterior),
+          cantidad_adicional: num(d.cantidad_adicional),
+          cantidad_nueva: num(d.cantidad_nueva),
+          valor_unitario: num(d.valor_unitario),
+          vr_total_anterior: num(d.vr_total_anterior),
+          vr_total_nuevo: num(d.vr_total_nuevo),
+        })),
+      })
+    );
   } catch (err) {
     return responderError(res, err, 'consultar el Otro Sí');
   }

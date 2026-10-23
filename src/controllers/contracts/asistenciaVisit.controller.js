@@ -112,6 +112,7 @@ function mapVisitRow(r) {
     ubicacion: r.ubicacion || null,
     detalle_visita: r.detalle_visita || null,
     foto1: r.foto1 || null,
+    foto2: r.foto2 || null,
     fecha: r.fecha || null,
   };
 }
@@ -132,6 +133,7 @@ async function loadVisitPivot(whereSql, params) {
             MAX(CASE WHEN TRIM(nombre_campo_doc) = 'ubicacion' THEN TRIM(valor_campo_doc) END) AS ubicacion,
             MAX(CASE WHEN TRIM(nombre_campo_doc) = 'detalle_visita' THEN TRIM(valor_campo_doc) END) AS detalle_visita,
             MAX(CASE WHEN TRIM(nombre_campo_doc) = 'foto1' THEN TRIM(valor_campo_doc) END) AS foto1,
+            MAX(CASE WHEN TRIM(nombre_campo_doc) = 'foto2' THEN TRIM(valor_campo_doc) END) AS foto2,
             MAX(CASE WHEN TRIM(nombre_campo_doc) = 'fecha' THEN TRIM(valor_campo_doc) END) AS fecha
        FROM item_documentos
       WHERE UPPER(TRIM(tipo_doc)) = ?
@@ -191,6 +193,13 @@ const startVisit = async (req, res) => {
       return res.status(401).json({ code: 0, message: 'Usuario no autenticado.' });
     }
 
+    if (!req.file?.filename) {
+      return res.status(400).json({
+        code: 0,
+        message: 'Debe capturar la foto de entrada para iniciar la visita.',
+      });
+    }
+
     const existing = await findOpenVisitByUser(idUsuario);
     if (existing) {
       return res.status(409).json({
@@ -222,6 +231,7 @@ const startVisit = async (req, res) => {
     const idTrabajador = String(
       req.body?.id_trabajador || idUsuario || ''
     ).trim();
+    const fotoEntrada = toPublicUploadPath(req.file.filename);
 
     const campos = [
       ['consecutivo', consecutivo],
@@ -232,6 +242,7 @@ const startVisit = async (req, res) => {
       ['id_trabajador', idTrabajador],
       ['trabajador', trabajador],
       ['cargo', cargo],
+      ['foto1', fotoEntrada],
     ];
 
     for (const [nombre, valor] of campos) {
@@ -251,6 +262,7 @@ const startVisit = async (req, res) => {
         cargo,
         id_trabajador: idTrabajador,
         id_usuario_registro: String(idUsuario),
+        foto1: fotoEntrada,
       },
     });
   } catch (err) {
@@ -334,10 +346,15 @@ const finishVisit = async (req, res) => {
       }
     }
 
+    if (!req.file?.filename) {
+      return res.status(400).json({
+        code: 0,
+        message: 'Debe capturar la foto de salida para finalizar la visita.',
+      });
+    }
+
     const horaFin = nowBogota();
-    const fotoRel = req.file
-      ? toPublicUploadPath(req.file.filename)
-      : String(req.body?.foto1 || open.foto1 || '').trim();
+    const fotoSalida = toPublicUploadPath(req.file.filename);
 
     const updates = [
       ['consecutivo', consecutivoFinal],
@@ -348,7 +365,7 @@ const finishVisit = async (req, res) => {
       ['trabajador', req.body?.trabajador || open.trabajador],
       ['cargo', req.body?.cargo || open.cargo],
       ['id_trabajador', req.body?.id_trabajador || open.id_trabajador],
-      ['foto1', fotoRel],
+      ['foto2', fotoSalida],
       ['hora_fin', horaFin],
       ['estado_visita', 'CERRADA'],
       ['id_usuario_registro', String(idUsuario)],
@@ -368,7 +385,8 @@ const finishVisit = async (req, res) => {
         estado_visita: 'CERRADA',
         hora_inicio: open.hora_inicio,
         hora_fin: horaFin,
-        foto1: fotoRel,
+        foto1: open.foto1 || null,
+        foto2: fotoSalida,
       },
     });
   } catch (err) {

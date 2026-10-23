@@ -474,12 +474,77 @@ const normalizarOtroSi = (body) => {
   };
 };
 
+/** ¿El No. Documento ya está en un Otro Sí (mismo u otro contrato)? */
+const findOtroSiNoDocumentoDuplicado = async (numerodoc, noDocumento, idEditar) => {
+  const noDoc = String(noDocumento || '').trim();
+  const doc = String(numerodoc || '').trim();
+  if (!noDoc || !doc) return null;
+
+  const rows = await query(
+    `SELECT id_otrosi, numerodoc, consecutivo, no_documento
+       FROM contrato_otrosi
+      WHERE TRIM(no_documento) COLLATE utf8mb4_general_ci = ?
+        AND (? IS NULL OR id_otrosi <> ?)
+      ORDER BY
+        CASE WHEN TRIM(numerodoc) COLLATE utf8mb4_general_ci = ? THEN 0 ELSE 1 END,
+        id_otrosi DESC
+      LIMIT 5`,
+    [noDoc, idEditar, idEditar, doc]
+  );
+  if (!Array.isArray(rows) || !rows.length) return null;
+
+  const mismoContrato = rows.filter(
+    (r) =>
+      String(r.numerodoc || '').trim().toUpperCase() === doc.toUpperCase()
+  );
+  const otros = rows.filter(
+    (r) =>
+      String(r.numerodoc || '').trim().toUpperCase() !== doc.toUpperCase()
+  );
+
+  return {
+    mismoContrato,
+    otros,
+    muestra: mismoContrato[0] || rows[0],
+  };
+};
+
 /** Registro (idEditar null) o edición; el SP reversa y vuelve a aplicar en una sola transacción. */
 const guardarOtroSi = async (req, res, idEditar) => {
   const datos = normalizarOtroSi(req.body);
   if (datos.error) return res.status(400).json({ codigo: 0, mensaje: datos.error });
 
+  const confirmarDuplicado =
+    req.body?.confirmar_numero_duplicado === true ||
+    String(req.body?.confirmar_numero_duplicado ?? '')
+      .trim()
+      .toLowerCase() === 'true' ||
+    String(req.body?.confirmar_numero_duplicado ?? '').trim() === '1';
+
   try {
+    if (!confirmarDuplicado) {
+      const dup = await findOtroSiNoDocumentoDuplicado(
+        datos.numerodoc,
+        datos.cabecera.no_documento,
+        idEditar
+      );
+      if (dup) {
+        const noDoc = datos.cabecera.no_documento;
+        let mensaje;
+        if (dup.mismoContrato.length) {
+          mensaje = `El No. Documento "${noDoc}" ya está registrado en un Otro Sí de este contrato. ¿Desea crear otro con el mismo número?`;
+        } else {
+          mensaje = `El No. Documento "${noDoc}" ya existe en otro contrato. ¿Desea crear otro con el mismo número?`;
+        }
+        return res.status(409).json({
+          codigo: 2,
+          mensaje,
+          requiere_confirmacion: true,
+          codigo_app: 'NUMERO_DUPLICADO_CONFIRMAR',
+        });
+      }
+    }
+
     const results = await query('CALL SP_CONTRATO_REGISTRAR_OTROSI(?, ?, ?, ?, ?)', [
       idEditar,
       datos.numerodoc,
@@ -488,6 +553,17 @@ const guardarOtroSi = async (req, res, idEditar) => {
       JSON.stringify(datos.items),
     ]);
     const r = primerResultado(results) || {};
+    // SP viejo en prod aún puede devolver codigo 2 por duplicado.
+    if (Number(r.codigo) === 2 && !confirmarDuplicado) {
+      return res.status(409).json({
+        codigo: 2,
+        mensaje: String(r.mensaje || '').includes('¿Desea')
+          ? r.mensaje
+          : `${r.mensaje || 'El No. Documento ya existe.'} ¿Desea crear otro con el mismo número?`,
+        requiere_confirmacion: true,
+        codigo_app: 'NUMERO_DUPLICADO_CONFIRMAR',
+      });
+    }
     return res.status(statusSp(Number(r.codigo), idEditar ? 200 : 201)).json(r);
   } catch (err) {
     return responderError(res, err, idEditar ? 'editar el Otro Sí' : 'registrar el Otro Sí');

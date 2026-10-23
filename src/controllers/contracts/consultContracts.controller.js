@@ -4,6 +4,11 @@ const {
   puedeEditarContrato,
 } = require('../../utils/permissions');
 
+/** Claves del payload front → nombre real en item_documentos (consulta/creación). */
+const CABECERA_KEY_ALIASES = {
+  valor_anticipo: 'Valor anticipo',
+};
+
 const consultContractsFull = (req, res) => {
   const {
     buscar = null,
@@ -62,6 +67,102 @@ const requireEditorContrato = (req, res) => {
   return true;
 };
 
+const normalizeCabecera = (cabecera) => {
+  const src =
+    cabecera && typeof cabecera === 'object' && !Array.isArray(cabecera)
+      ? cabecera
+      : {};
+  const out = {};
+  for (const [rawKey, rawVal] of Object.entries(src)) {
+    const key = CABECERA_KEY_ALIASES[rawKey] || rawKey;
+    if (!key) continue;
+    if (rawVal == null || String(rawVal).trim() === '' || String(rawVal) === 'null') {
+      out[key] = null;
+    } else {
+      out[key] = String(rawVal).trim();
+    }
+  }
+  // No dejar huérfano valor_anticipo si también llega Valor anticipo.
+  if (Object.prototype.hasOwnProperty.call(out, 'Valor anticipo')) {
+    delete out.valor_anticipo;
+  }
+  return out;
+};
+
+/**
+ * Upsert EAV por campo (misma lógica que remisiones): el SP hace UPDATE/INSERT,
+ * pero reforzamos aquí por si el SP en prod aún no tiene JSON_QUOTE / TRIM.
+ */
+const upsertContratoCampo = (numerodoc, nombreCampo, valor, done) => {
+  const doc = String(numerodoc || '').trim();
+  const campo = String(nombreCampo || '').trim();
+  if (!doc || !campo) {
+    return done(null);
+  }
+  const v = valor == null ? null : String(valor);
+
+  db.query(
+    `SELECT tipo_doc
+       FROM item_documentos
+      WHERE UPPER(TRIM(tipo_doc)) = 'CONTRATO'
+        AND TRIM(numerodoc) = ?
+      LIMIT 1`,
+    [doc],
+    (errTipo, tipoRows) => {
+      if (errTipo) return done(errTipo);
+      const tipoDoc =
+        Array.isArray(tipoRows) && tipoRows[0]?.tipo_doc
+          ? String(tipoRows[0].tipo_doc).trim()
+          : 'Contrato';
+
+      db.query(
+        `SELECT 1 AS ok
+           FROM item_documentos
+          WHERE UPPER(TRIM(tipo_doc)) = 'CONTRATO'
+            AND TRIM(numerodoc) = ?
+            AND TRIM(nombre_campo_doc) = ?
+          LIMIT 1`,
+        [doc, campo],
+        (err, rows) => {
+          if (err) return done(err);
+          if (Array.isArray(rows) && rows.length > 0) {
+            return db.query(
+              `UPDATE item_documentos
+                  SET valor_campo_doc = ?
+                WHERE UPPER(TRIM(tipo_doc)) = 'CONTRATO'
+                  AND TRIM(numerodoc) = ?
+                  AND TRIM(nombre_campo_doc) = ?`,
+              [v, doc, campo],
+              (errUp) => done(errUp || null)
+            );
+          }
+          return db.query(
+            `INSERT INTO item_documentos
+               (tipo_doc, numerodoc, nombre_campo_doc, valor_campo_doc)
+             VALUES (?, ?, ?, ?)`,
+            [tipoDoc, doc, campo, v],
+            (errIns) => done(errIns || null)
+          );
+        }
+      );
+    }
+  );
+};
+
+const upsertCabeceraEav = (numerodoc, cabecera, done) => {
+  const entries = Object.entries(cabecera || {});
+  if (!entries.length) return done(null);
+
+  let i = 0;
+  const next = (err) => {
+    if (err) return done(err);
+    if (i >= entries.length) return done(null);
+    const [campo, valor] = entries[i++];
+    upsertContratoCampo(numerodoc, campo, valor, next);
+  };
+  next(null);
+};
+
 const updateContractFull = (req, res) => {
   if (!requireEditorContrato(req, res)) return;
 
@@ -72,9 +173,8 @@ const updateContractFull = (req, res) => {
   }
 
   const doc = String(numerodoc).trim();
-  const cabeceraJson = JSON.stringify(
-    cabecera && typeof cabecera === 'object' ? cabecera : {}
-  );
+  const cab = normalizeCabecera(cabecera);
+  const cabeceraJson = JSON.stringify(cab);
   let detalleParam = null;
   if (detalle != null && Array.isArray(detalle) && detalle.length > 0) {
     detalleParam = JSON.stringify(detalle);
@@ -90,7 +190,20 @@ const updateContractFull = (req, res) => {
           detalle: err.message || err,
         });
       }
-      return res.status(200).json({ mensaje: 'Contrato actualizado correctamente' });
+
+      // Refuerzo EAV (encargado, Valor anticipo, etc.) aunque el SP legado falle en algún campo.
+      upsertCabeceraEav(doc, cab, (eavErr) => {
+        if (eavErr) {
+          return res.status(500).json({
+            error:
+              'El contrato se actualizó parcialmente; no se pudieron guardar todos los campos de cabecera.',
+            detalle: eavErr.message || eavErr,
+          });
+        }
+        return res
+          .status(200)
+          .json({ mensaje: 'Contrato actualizado correctamente' });
+      });
     }
   );
 };

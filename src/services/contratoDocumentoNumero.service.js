@@ -61,14 +61,12 @@ const normalizeContratoCamposBeforeInsert = (
 };
 
 /**
- * Impide duplicar contrato por numerodoc EAV o por campo numero_contrato.
- * queryFn: (sql, params) => Promise<rows>  (pool.promise o queryTx)
+ * Busca si el N° Documento ya está en algún contrato (EAV).
+ * queryFn: (sql, params) => Promise<rows>
  */
-const assertContratoNumeroNoDuplicado = async (queryFn, numero) => {
+const findContratoNumeroDuplicado = async (queryFn, numero) => {
   const n = String(numero ?? '').trim();
-  if (!n) {
-    throw makeHttpError('N° Documento es obligatorio.');
-  }
+  if (!n) return null;
 
   const rows = await queryFn(
     `SELECT numerodoc
@@ -90,10 +88,33 @@ const assertContratoNumeroNoDuplicado = async (queryFn, numero) => {
   );
 
   if (Array.isArray(rows) && rows.length > 0) {
+    return { numerodoc: String(rows[0].numerodoc || n).trim(), numero: n };
+  }
+  return null;
+};
+
+/**
+ * Impide duplicar contrato por numerodoc EAV o por campo numero_contrato,
+ * salvo que el usuario haya confirmado explícitamente (allowDuplicate).
+ * queryFn: (sql, params) => Promise<rows>  (pool.promise o queryTx)
+ */
+const assertContratoNumeroNoDuplicado = async (
+  queryFn,
+  numero,
+  { allowDuplicate = false } = {}
+) => {
+  const n = String(numero ?? '').trim();
+  if (!n) {
+    throw makeHttpError('N° Documento es obligatorio.');
+  }
+  if (allowDuplicate) return;
+
+  const dup = await findContratoNumeroDuplicado(queryFn, n);
+  if (dup) {
     throw makeHttpError(
-      `Ya existe un contrato registrado con el N° Documento "${n}".`,
+      `Ya existe un contrato con el N° Documento "${n}". ¿Desea crear otro con el mismo número?`,
       409,
-      'CONSECUTIVO_DUPLICADO'
+      'NUMERO_DUPLICADO_CONFIRMAR'
     );
   }
 };
@@ -105,7 +126,7 @@ const assertContratoNumeroNoDuplicado = async (queryFn, numero) => {
  */
 const validateContratoDocumentoNumero = async (
   queryTx,
-  { campos, numerodoc, tipo_doc_catalogo }
+  { campos, numerodoc, tipo_doc_catalogo, allowDuplicate = false }
 ) => {
   const numero =
     getCampoValor(campos, 'tipo_doc_contratista') ||
@@ -136,12 +157,27 @@ const validateContratoDocumentoNumero = async (
     if (msg && String(msg).trim() !== 'OK') {
       const text = String(msg).trim();
       if (/ya existe/i.test(text)) {
-        throw makeHttpError(text, 409, 'CONSECUTIVO_DUPLICADO');
+        if (allowDuplicate) {
+          // Catálogo/SP legado bloqueaba duplicado; el usuario ya confirmó.
+        } else {
+          throw makeHttpError(
+            text.includes('¿Desea')
+              ? text
+              : `${text} ¿Desea crear otro con el mismo número?`,
+            409,
+            'NUMERO_DUPLICADO_CONFIRMAR'
+          );
+        }
+      } else {
+        throw makeHttpError(text);
       }
-      throw makeHttpError(text);
     }
   } catch (err) {
-    if (err?.codigo === 'CONSECUTIVO_DUPLICADO' || err?.statusCode === 409) {
+    if (
+      err?.codigo === 'NUMERO_DUPLICADO_CONFIRMAR' ||
+      err?.codigo === 'CONSECUTIVO_DUPLICADO' ||
+      err?.statusCode === 409
+    ) {
       throw err;
     }
     if (err?.code === 'ER_SP_DOES_NOT_EXIST' || err?.errno === 1305) {
@@ -150,17 +186,23 @@ const validateContratoDocumentoNumero = async (
         tipoDoc,
         constructora,
         proyecto,
+        allowDuplicate,
       });
     } else if (err?.sqlState === '45000' || err?.errno === 1644) {
       const text = String(err.sqlMessage || err.message || '').trim();
       if (/ya existe/i.test(text)) {
-        throw makeHttpError(
-          text || `Ya existe un contrato con el N° Documento "${numero}".`,
-          409,
-          'CONSECUTIVO_DUPLICADO'
-        );
+        if (!allowDuplicate) {
+          throw makeHttpError(
+            text.includes('¿Desea')
+              ? text
+              : `Ya existe un contrato con el N° Documento "${numero}". ¿Desea crear otro con el mismo número?`,
+            409,
+            'NUMERO_DUPLICADO_CONFIRMAR'
+          );
+        }
+      } else {
+        throw makeHttpError(text || 'Validación de N° Documento fallida.');
       }
-      throw makeHttpError(text || 'Validación de N° Documento fallida.');
     } else if (err?.statusCode) {
       throw err;
     } else {
@@ -168,13 +210,13 @@ const validateContratoDocumentoNumero = async (
     }
   }
 
-  // Doble check JS: cubre SP viejo en prod sin regla de duplicado
-  await assertContratoNumeroNoDuplicado(queryTx, numero);
+  // Doble check JS: cubre SP viejo en prod; se omite si el usuario confirmó.
+  await assertContratoNumeroNoDuplicado(queryTx, numero, { allowDuplicate });
 };
 
 const validateContratoDocumentoNumeroFallback = async (
   queryTx,
-  { numero, tipoDoc, constructora, proyecto }
+  { numero, tipoDoc, constructora, proyecto, allowDuplicate = false }
 ) => {
   const rows = await queryTx(
     `SELECT
@@ -218,7 +260,7 @@ const validateContratoDocumentoNumeroFallback = async (
     );
   }
 
-  await assertContratoNumeroNoDuplicado(queryTx, numero);
+  await assertContratoNumeroNoDuplicado(queryTx, numero, { allowDuplicate });
 };
 
 module.exports = {
@@ -226,4 +268,5 @@ module.exports = {
   normalizeContratoCamposBeforeInsert,
   validateContratoDocumentoNumero,
   assertContratoNumeroNoDuplicado,
+  findContratoNumeroDuplicado,
 };

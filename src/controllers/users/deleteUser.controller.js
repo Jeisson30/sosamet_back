@@ -3,9 +3,17 @@ const db = require('../../config/db');
 const deleteUser = (req, res) => {
   const { p_id_usuario } = req.body;
 
+  const idUsuario = Number(p_id_usuario);
+  if (!Number.isFinite(idUsuario) || idUsuario <= 0) {
+    return res.status(400).json({
+      message: 'id_usuario inválido. La eliminación no se aplicó.',
+      code: 0,
+    });
+  }
+
   db.query(
     'CALL sp_eliminar_usuario(?, @p_resultado, @p_codigo)',
-    [p_id_usuario],
+    [idUsuario],
     (err) => {
       if (err) {
         return res.status(500).json({

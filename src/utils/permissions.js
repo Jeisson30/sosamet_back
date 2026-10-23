@@ -5,6 +5,9 @@
 const PERFIL_ID = {
   ADMINISTRADOR: 1,
   SUPERVISOR_PROYECTOS: 2,
+  AUXILIAR: 3,
+  RESIDENTE_OBRA: 4,
+  DELINEANTE: 5,
   CONTABILIDAD: 10,
 };
 
@@ -43,17 +46,22 @@ function normNombre(nombre) {
 }
 
 /**
- * Valores Contrato / Otro Sí: solo Administrador y Supervisor de Proyectos.
+ * Valores Contrato / Otro Sí: Admin, Supervisor de Proyectos y Auxiliar.
  */
 function puedeVerValoresContrato(user) {
   const id = Number(user?.id_perfil);
-  if (id === PERFIL_ID.ADMINISTRADOR || id === PERFIL_ID.SUPERVISOR_PROYECTOS) {
+  if (
+    id === PERFIL_ID.ADMINISTRADOR ||
+    id === PERFIL_ID.SUPERVISOR_PROYECTOS ||
+    id === PERFIL_ID.AUXILIAR
+  ) {
     return true;
   }
   const n = normNombre(user?.nombre_perfil);
   return (
     n === PERFIL_NOMBRE.ADMINISTRADOR ||
-    n === PERFIL_NOMBRE.SUPERVISOR_PROYECTOS
+    n === PERFIL_NOMBRE.SUPERVISOR_PROYECTOS ||
+    n === PERFIL_NOMBRE.AUXILIAR
   );
 }
 
@@ -144,14 +152,15 @@ function puedeAccederInventario(user) {
 }
 
 /**
- * Excel INFORMES: Admin (todos), Supervisor Proyectos, Contabilidad.
- * El filtrado por tipo de informe (General/Contratos/Finanzas/Producción) está en el front.
+ * INFORMES: Admin (todos), Supervisor / Auxiliar, Contabilidad.
+ * El filtrado por tipo de informe está en el front.
  */
 function puedeAccederInformes(user) {
   const id = Number(user?.id_perfil);
   if (
     id === PERFIL_ID.ADMINISTRADOR ||
     id === PERFIL_ID.SUPERVISOR_PROYECTOS ||
+    id === PERFIL_ID.AUXILIAR ||
     id === PERFIL_ID.CONTABILIDAD
   ) {
     return true;
@@ -160,6 +169,7 @@ function puedeAccederInformes(user) {
   return (
     n === PERFIL_NOMBRE.ADMINISTRADOR ||
     n === PERFIL_NOMBRE.SUPERVISOR_PROYECTOS ||
+    n === PERFIL_NOMBRE.AUXILIAR ||
     n === PERFIL_NOMBRE.CONTABILIDAD
   );
 }

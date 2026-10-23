@@ -8,7 +8,7 @@ const {
 } = require('../../controllers/contracts/asistenciaVisit.controller');
 
 router.get('/open', getOpenVisit);
-router.post('/start', startVisit);
-router.post('/finish', uploadEvidence.single('foto1'), finishVisit);
+router.post('/start', uploadEvidence.single('foto1'), startVisit);
+router.post('/finish', uploadEvidence.single('foto2'), finishVisit);
 
 module.exports = router;

@@ -59,7 +59,7 @@ const insertContract = async (req, res) => {
       }
     }
 
-    // Contratos: no permitir el mismo N° Documento / numero_contrato
+    // Contratos: avisar si el N° ya existe (confirmación en front); permitir si confirma.
     if (tipoUpper === "CONTRATO") {
       const numeroFromCampos = Array.isArray(campos)
         ? String(
@@ -72,9 +72,16 @@ const insertContract = async (req, res) => {
           ).trim()
         : "";
       const numero = numeroFromCampos || doc;
+      const confirmarDuplicado =
+        req.body?.confirmar_numero_duplicado === true ||
+        String(req.body?.confirmar_numero_duplicado ?? "")
+          .trim()
+          .toLowerCase() === "true" ||
+        String(req.body?.confirmar_numero_duplicado ?? "").trim() === "1";
       await assertContratoNumeroNoDuplicado(
         (sql, params) => dbp.query(sql, params).then(([rows]) => rows),
-        numero
+        numero,
+        { allowDuplicate: confirmarDuplicado }
       );
     }
 
@@ -116,10 +123,15 @@ const insertContract = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error al insertar campos:", error);
-    if (error?.statusCode === 409 || error?.codigo === "CONSECUTIVO_DUPLICADO") {
+    if (
+      error?.statusCode === 409 ||
+      error?.codigo === "NUMERO_DUPLICADO_CONFIRMAR" ||
+      error?.codigo === "CONSECUTIVO_DUPLICADO"
+    ) {
       return res.status(409).json({
         mensaje: error.message,
-        codigo: "CONSECUTIVO_DUPLICADO",
+        codigo: error.codigo || "NUMERO_DUPLICADO_CONFIRMAR",
+        requiere_confirmacion: true,
       });
     }
     res.status(500).json({

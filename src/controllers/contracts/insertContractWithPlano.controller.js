@@ -96,12 +96,19 @@ const insertContractWithPlano = async (req, res) => {
       numerodocFinal = norm.numerodoc;
     }
 
+    const confirmarDuplicado =
+      String(req.body?.confirmar_numero_duplicado ?? '')
+        .trim()
+        .toLowerCase() === 'true' ||
+      String(req.body?.confirmar_numero_duplicado ?? '').trim() === '1';
+
     await runInTransaction(async (queryTx) => {
       if (isContrato) {
         await validateContratoDocumentoNumero(queryTx, {
           campos: camposNormalizados,
           numerodoc: numerodocFinal,
           tipo_doc_catalogo: tipoDocCatalogo,
+          allowDuplicate: confirmarDuplicado,
         });
       }
 
@@ -150,10 +157,17 @@ const insertContractWithPlano = async (req, res) => {
     console.error('Error insertContractWithPlano:', error);
     tempFiles.forEach(unlinkSafe);
 
-    if (error?.statusCode === 409 || error?.codigo === 'CONSECUTIVO_DUPLICADO') {
+    if (
+      error?.statusCode === 409 ||
+      error?.codigo === 'NUMERO_DUPLICADO_CONFIRMAR' ||
+      error?.codigo === 'CONSECUTIVO_DUPLICADO'
+    ) {
       return res.status(409).json({
         mensaje: error.message,
-        codigo: 'CONSECUTIVO_DUPLICADO',
+        codigo: error.codigo || 'NUMERO_DUPLICADO_CONFIRMAR',
+        requiere_confirmacion:
+          error.codigo === 'NUMERO_DUPLICADO_CONFIRMAR' ||
+          error.codigo === 'CONSECUTIVO_DUPLICADO',
       });
     }
 
@@ -166,8 +180,11 @@ const insertContractWithPlano = async (req, res) => {
     ).trim();
     if (/ya existe/i.test(text)) {
       return res.status(409).json({
-        mensaje: text,
-        codigo: 'CONSECUTIVO_DUPLICADO',
+        mensaje: text.includes('¿Desea')
+          ? text
+          : `${text} ¿Desea crear otro con el mismo número?`,
+        codigo: 'NUMERO_DUPLICADO_CONFIRMAR',
+        requiere_confirmacion: true,
       });
     }
 

@@ -16,7 +16,9 @@ const loginUser = (req, res) => {
     });
   }
 
-  db.query('CALL sp_login_usuario(?, ?)', [p_email, p_password], (err, results) => {
+  const emailNorm = String(p_email).trim();
+
+  db.query('CALL sp_login_usuario(?, ?)', [emailNorm, p_password], (err, results) => {
     if (err) {
       console.error("ERROR SP LOGIN:", err);
     

@@ -27,6 +27,7 @@ const deleteUsers = require('./src/routes/user/deleteUser.routes')
 
 const changePassword = require('./src/routes/auth/changePassword.routes')
 const loginUser = require('./src/routes/auth/loginUser.routes')
+const forgotPassword = require('./src/routes/auth/forgotPassword.routes')
 
 const typeContracts = require('./src/routes/contracts/getTypeContracts.routes')
 const typeFields = require('./src/routes/contracts/getTypeFields.routes')
@@ -42,6 +43,8 @@ const consultContracts = require('./src/routes/contracts/consultContracts.routes
 const consultAsistencia = require('./src/routes/contracts/consultAsistencia.routes')
 const asistenciaVisit = require('./src/routes/contracts/asistenciaVisit.routes')
 const otroSiRoutes = require('./src/routes/contracts/otroSi.routes');
+const memoriasRoutes = require('./src/routes/contracts/memorias.routes');
+const actasPagoRoutes = require('./src/routes/contracts/actasPago.routes');
 const uploadExcelRemisiones = require('./src/routes/contracts/uploadFilesRemisiones.routes')
 const uploadExcelActasPago = require('./src/routes/contracts/uploadFilesActasPago.rutes')
 const insertActasMedidaDetalle = require('./src/routes/contracts/insertActasMedidaDetalle.routes')
@@ -114,6 +117,17 @@ const loginLimiter = rateLimit({
   },
 });
 
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    code: 0,
+    message: 'Demasiados intentos de recuperación. Intenta más tarde.',
+  },
+});
+
 // 🔹 Documentación Swagger
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
@@ -124,7 +138,8 @@ app.get("/", (req, res) => {
 
 // Rutas públicas (sin JWT)
 app.use('/api/auth/changePassword', changePassword);
-app.use('/api/auth/loginUser', loginUser);
+app.use('/api/auth/loginUser', loginLimiter, loginUser);
+app.use('/api/auth/forgotPassword', forgotPasswordLimiter, forgotPassword);
 
 // Rutas protegidas (requieren Authorization: Bearer <token>)
 app.use("/api/roles", authMiddleware, roleRoutes);
@@ -146,6 +161,8 @@ app.use('/api/contracts/consult-contracts', authMiddleware, consultContracts);
 app.use('/api/contracts/consult-asistencia', authMiddleware, consultAsistencia);
 app.use('/api/contracts/asistencia', authMiddleware, asistenciaVisit);
 app.use('/api/contracts/otro-si', authMiddleware, otroSiRoutes);
+app.use('/api/contracts/memorias', authMiddleware, memoriasRoutes);
+app.use('/api/contracts/actas-pago', authMiddleware, actasPagoRoutes);
 app.use('/api/contracts', authMiddleware, insertDataContract);
 app.use('/api/contracts', authMiddleware, insertContractWithPlano);
 app.use('/api/contracts', authMiddleware, getContractDetail);

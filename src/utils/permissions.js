@@ -90,6 +90,11 @@ function puedeEditarActasPago(user) {
   return EDITORES_ACTAS_PAGO.has(normNombre(user?.nombre_perfil));
 }
 
+/** Memorias (facturación): mismos editores que Actas de Pago. */
+function puedeEditarMemorias(user) {
+  return puedeEditarActasPago(user);
+}
+
 function esClaveMonetaria(key) {
   const k = String(key || '');
   if (!k) return false;
@@ -181,6 +186,7 @@ module.exports = {
   puedeEditarContrato,
   puedeEditarRemision,
   puedeEditarActasPago,
+  puedeEditarMemorias,
   aplicarRestriccionValores,
   stripMonetaryFieldsDeep,
   puedeAccederInventario,

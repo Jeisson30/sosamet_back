@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const uploadEvidence = require('../../middlewares/uploadEvidence.middleware');
 const {
   getContexto,
   listar,
@@ -8,9 +9,11 @@ const {
   finalizar,
   anular,
   eliminar,
+  uploadEvidencia,
 } = require('../../controllers/contracts/memorias.controller');
 
 router.get('/contexto', getContexto);
+router.post('/upload-evidencia', uploadEvidence.single('foto'), uploadEvidencia);
 router.get('/', listar);
 router.get('/:id', obtener);
 router.post('/', guardar);

@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 
 const JWT_SECRET = process.env.JWT_SECRET;
-const FRONTEND_URL = process.env.SERVER_LOCAL;
+const FRONTEND_URL = process.env.SERVER_PROD || process.env.SERVER_LOCAL;
 const RESET_EXPIRES_IN = '24h';
 
 /** Misma respuesta siempre (anti-enumeración). */

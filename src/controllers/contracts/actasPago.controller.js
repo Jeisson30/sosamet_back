@@ -33,16 +33,49 @@ const requireEditor = (req, res) => {
   return true;
 };
 
-async function nextConsecutivo() {
+/** Prefijo por empresa asociada: SOSA / HIERROS / DMS (fallback PAGO). */
+function prefixFromEmpresa(empresa) {
+  const n = String(empresa || '')
+    .trim()
+    .toUpperCase();
+  if (n.includes('DMS')) return 'DMS';
+  if (n.includes('HIERRO') || /\bHS\b/.test(n) || n.includes('H&S')) return 'HIERROS';
+  if (n.includes('SOSAMET') || n.includes('SOSA')) return 'SOSA';
+  return 'PAGO';
+}
+
+async function nextConsecutivo(empresa) {
+  const prefix = prefixFromEmpresa(empresa);
   const rows = await queryAsync(
     `SELECT consecutivo FROM acta_pago
-      WHERE consecutivo LIKE 'PAGO-%'
-      ORDER BY id DESC LIMIT 1`
+      WHERE consecutivo LIKE ?
+      ORDER BY id DESC LIMIT 1`,
+    [`${prefix}-%`]
   );
   const last = rows?.[0]?.consecutivo || '';
-  const m = String(last).match(/PAGO-(\d+)/i);
+  const re = new RegExp(`^${prefix}-(\\d+)$`, 'i');
+  const m = String(last).match(re);
   const n = m ? Number(m[1]) + 1 : 1;
-  return `PAGO-${String(n).padStart(4, '0')}`;
+  return `${prefix}-${String(n).padStart(4, '0')}`;
+}
+
+async function assertConsecutivoLibre(consecutivo, excludeId = null) {
+  const raw = String(consecutivo || '').trim().toUpperCase();
+  if (!raw) return null;
+  const params = [raw];
+  let sql = `SELECT id FROM acta_pago WHERE UPPER(TRIM(consecutivo)) = ?`;
+  if (excludeId) {
+    sql += ` AND id <> ?`;
+    params.push(excludeId);
+  }
+  sql += ` LIMIT 1`;
+  const exists = await queryAsync(sql, params);
+  if (exists?.length) {
+    const err = new Error(`El consecutivo ${raw} ya existe.`);
+    err.status = 409;
+    throw err;
+  }
+  return raw;
 }
 
 async function resolveEmpresaNombre(idOrName) {
@@ -276,8 +309,9 @@ const getContexto = async (req, res) => {
     const valor_acta = toNum(mem.valor_neto);
     const pagos_anteriores = await sumPagosContrato(mem.numero_contrato);
     const valor_acumulado = pagos_anteriores;
+    // Saldo por pagar (KPI) = valor contrato − acumulado − valor acta.
     const saldo_por_pagar = Number(
-      Math.max(0, valor_contrato - valor_acumulado).toFixed(2)
+      Math.max(0, valor_contrato - valor_acumulado - valor_acta).toFixed(2)
     );
 
     const empresa = await resolveEmpresaNombre(
@@ -306,7 +340,7 @@ const getContexto = async (req, res) => {
           saldo_por_pagar,
           pagos_anteriores,
         },
-        siguiente_consecutivo: await nextConsecutivo(),
+        siguiente_consecutivo: await nextConsecutivo(empresa),
       })
     );
   } catch (error) {
@@ -521,8 +555,9 @@ const guardar = async (req, res) => {
       mem.numero_contrato,
       idExistente
     );
+    // KPI / resumen valores: contrato − acumulado − valor acta.
     const saldo_por_pagar = Number(
-      Math.max(0, valor_a_pagar - pagos_anteriores).toFixed(2)
+      Math.max(0, valor_contrato - pagos_anteriores - valor_acta).toFixed(2)
     );
 
     const tipo_documento_pago = String(cab.tipo_documento_pago || '').trim();
@@ -531,6 +566,17 @@ const guardar = async (req, res) => {
     const fecha_emision =
       cab.fecha_emision ||
       new Date().toISOString().slice(0, 10);
+    const recibo_caja = String(cab.recibo_caja || '').trim() || null;
+    const fecha_pago = String(cab.fecha_pago || '').trim() || null;
+    let estado = String(cab.estado || 'EN_REVISION').trim().toUpperCase();
+    if (!['EN_REVISION', 'FACTURADO', 'PAGO'].includes(estado)) {
+      estado = 'EN_REVISION';
+    }
+    if (estado === 'PAGO' && (!recibo_caja || !fecha_pago)) {
+      return res.status(400).json({
+        mensaje: 'Para estado Pago indique recibo de caja y fecha de pago.',
+      });
+    }
     const id_usuario = req.user?.id_usuario || req.user?.id || null;
     const empresa =
       (await resolveEmpresaNombre(mem.empresa_asociada)) ||
@@ -540,11 +586,18 @@ const guardar = async (req, res) => {
     let consecutivo = String(cab.consecutivo || '').trim();
 
     if (id) {
+      if (consecutivo) {
+        consecutivo = await assertConsecutivoLibre(consecutivo, id);
+      }
       await queryAsync(
         `UPDATE acta_pago SET
+            consecutivo = COALESCE(?, consecutivo),
             tipo_documento_pago = ?,
             tipo_pago = ?,
+            estado = ?,
             fecha_emision = ?,
+            recibo_caja = ?,
+            fecha_pago = ?,
             valor_contrato = ?,
             valor_acta = ?,
             total_descuentos = ?,
@@ -561,9 +614,13 @@ const guardar = async (req, res) => {
             memoria_consecutivo = ?
           WHERE id = ?`,
         [
+          consecutivo || null,
           tipo_documento_pago || null,
           tipo_pago || null,
+          estado,
           fecha_emision,
+          recibo_caja,
+          fecha_pago,
           valor_contrato,
           valor_acta,
           total_descuentos,
@@ -585,16 +642,19 @@ const guardar = async (req, res) => {
         id,
       ]);
     } else {
-      consecutivo = consecutivo || (await nextConsecutivo());
+      consecutivo =
+        (await assertConsecutivoLibre(consecutivo)) ||
+        (await nextConsecutivo(empresa));
       const ins = await queryAsync(
         `INSERT INTO acta_pago (
             consecutivo, id_memoria, memoria_consecutivo, numerodoc_contrato,
             numero_contrato, constructora, proyecto, tipo_documento,
             empresa_asociada, tipo_documento_pago, tipo_pago, estado,
-            fecha_emision, valor_contrato, valor_acta, total_descuentos,
+            fecha_emision, recibo_caja, fecha_pago,
+            valor_contrato, valor_acta, total_descuentos,
             valor_a_pagar, pagos_anteriores, saldo_por_pagar, observaciones,
             id_usuario
-          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,'EN_REVISION',?,?,?,?,?,?,?,?,?)`,
+          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           consecutivo,
           id_memoria,
@@ -607,7 +667,10 @@ const guardar = async (req, res) => {
           empresa,
           tipo_documento_pago || null,
           tipo_pago || null,
+          estado,
           fecha_emision,
+          recibo_caja,
+          fecha_pago,
           valor_contrato,
           valor_acta,
           total_descuentos,
@@ -635,12 +698,16 @@ const guardar = async (req, res) => {
       data: {
         id,
         consecutivo,
-        estado: 'EN_REVISION',
+        estado,
         valor_a_pagar,
         total_descuentos,
+        saldo_por_pagar,
       },
     });
   } catch (error) {
+    if (error?.status === 409) {
+      return res.status(409).json({ mensaje: error.message });
+    }
     console.error('actasPago.guardar:', error);
     return res.status(500).json({
       mensaje: 'Error al guardar Acta de Pago.',

@@ -114,7 +114,7 @@ const enableCatalogAccess = (req, res) => {
   const nodemailer = require('nodemailer');
 
   const JWT_SECRET = process.env.JWT_SECRET;
-  const FRONTEND_URL = process.env.SERVER_LOCAL;
+  const FRONTEND_URL = process.env.SERVER_PROD || process.env.SERVER_LOCAL;
   const idUsuario = Number(req.body?.p_id_usuario);
   const email = String(req.body?.p_email || '').trim().toLowerCase();
 

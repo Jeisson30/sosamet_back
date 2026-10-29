@@ -527,8 +527,128 @@ const upsertGrillaActaContrato = async (req, res) => {
   }
 };
 
+const isRemisionAnuladaEstado = (estado) => {
+  const v = String(estado ?? '')
+    .trim()
+    .toUpperCase();
+  return v === '3' || v === 'ANULADA' || v === 'ANULADO';
+};
+
+/** Acumulado remisionado por ítem (excluye remisiones anuladas). */
+const loadAcumuladoRemisiones = async (numeroContrato) => {
+  const rows = await queryAsync(
+    `SELECT
+        TRIM(rp.item) AS item,
+        rp.cantidad AS cantidad,
+        est.valor_campo_doc AS estado
+      FROM remisiones_plano rp
+      LEFT JOIN item_documentos est
+        ON est.numerodoc = rp.numerodoc
+       AND UPPER(TRIM(est.tipo_doc)) = 'REMISIONES'
+       AND LOWER(est.nombre_campo_doc) = 'estado'
+      WHERE TRIM(rp.contrato) = ?`,
+    [numeroContrato]
+  );
+
+  const byItem = new Map();
+  for (const r of rows || []) {
+    if (isRemisionAnuladaEstado(r.estado)) continue;
+    const item = String(r.item ?? '').trim();
+    if (!item) continue;
+    const n = Number(r.cantidad);
+    const add = Number.isFinite(n) ? n : 0;
+    byItem.set(item, (byItem.get(item) || 0) + add);
+  }
+
+  return Array.from(byItem.entries()).map(([item, cantidad_acumulada]) => ({
+    item,
+    cantidad_acumulada,
+  }));
+};
+
+/** Historial de remisiones del contrato (agrupado por numerodoc / consecutivo visible). */
+const loadRemisionesAnteriores = async (numeroContrato) => {
+  const rows = await queryAsync(
+    `SELECT
+        rp.id,
+        TRIM(IFNULL(rp.numerodoc, '')) AS numerodoc,
+        TRIM(IFNULL(rp.item, '')) AS item,
+        rp.detalle,
+        rp.cantidad,
+        rp.um,
+        rp.observaciones,
+        MAX(CASE
+          WHEN LOWER(eav.nombre_campo_doc) = 'remision_material'
+          THEN TRIM(eav.valor_campo_doc)
+        END) AS remision_material,
+        MAX(CASE
+          WHEN LOWER(eav.nombre_campo_doc) = 'fecha_remision'
+          THEN TRIM(eav.valor_campo_doc)
+        END) AS fecha_remision,
+        MAX(CASE
+          WHEN LOWER(eav.nombre_campo_doc) = 'estado'
+          THEN TRIM(eav.valor_campo_doc)
+        END) AS estado
+      FROM remisiones_plano rp
+      LEFT JOIN item_documentos eav
+        ON eav.numerodoc = rp.numerodoc
+       AND UPPER(TRIM(eav.tipo_doc)) = 'REMISIONES'
+      WHERE TRIM(rp.contrato) = ?
+      GROUP BY
+        rp.id,
+        rp.numerodoc,
+        rp.item,
+        rp.detalle,
+        rp.cantidad,
+        rp.um,
+        rp.observaciones
+      ORDER BY rp.numerodoc DESC, rp.id DESC`,
+    [numeroContrato]
+  );
+
+  const byKey = new Map();
+  for (const r of rows || []) {
+    if (isRemisionAnuladaEstado(r.estado)) continue;
+    const numerodoc = String(r.numerodoc ?? '').trim();
+    const remisionMaterial = String(r.remision_material ?? '').trim();
+    const key = numerodoc || remisionMaterial || `row-${r.id}`;
+    if (!byKey.has(key)) {
+      byKey.set(key, {
+        consecutivo: remisionMaterial || numerodoc || key,
+        numerodoc: numerodoc || null,
+        fecha_remision: r.fecha_remision ?? null,
+        items: [],
+      });
+    }
+    const group = byKey.get(key);
+    if (!group.fecha_remision && r.fecha_remision) {
+      group.fecha_remision = r.fecha_remision;
+    }
+    if (
+      (!group.consecutivo || group.consecutivo === numerodoc) &&
+      remisionMaterial
+    ) {
+      group.consecutivo = remisionMaterial;
+    }
+    const cantNum =
+      r.cantidad != null && String(r.cantidad).trim() !== ''
+        ? Number(r.cantidad)
+        : null;
+    group.items.push({
+      item: r.item || null,
+      detalle: r.detalle ?? null,
+      cantidad: Number.isFinite(cantNum) ? cantNum : null,
+      um: r.um ?? null,
+      observaciones: r.observaciones ?? null,
+    });
+  }
+
+  return Array.from(byKey.values());
+};
+
 /**
  * GET /api/contracts/contexto-acta-medida?numero_contrato=&tipo_vinculo=CONTRATO
+ * También expone acumulado_remisiones + remisiones_anteriores (mismo plano; actas las ignora).
  */
 const getContextoActaMedida = async (req, res) => {
   try {
@@ -548,13 +668,21 @@ const getContextoActaMedida = async (req, res) => {
     const cabecera = await pivotContratoCabecera(numeroContrato);
     const numerodoc = cabecera?.numerodoc ?? null;
 
-    const [itemsPlano, acumulado_actas, actas_anteriores, grilla_estado] =
-      await Promise.all([
-        loadItemsContrato(numerodoc),
-        loadAcumuladoActas(numeroContrato, tipoVinculo),
-        loadActasAnteriores(numeroContrato, tipoVinculo),
-        loadGrillaContrato(numeroContrato),
-      ]);
+    const [
+      itemsPlano,
+      acumulado_actas,
+      actas_anteriores,
+      grilla_estado,
+      acumulado_remisiones,
+      remisiones_anteriores,
+    ] = await Promise.all([
+      loadItemsContrato(numerodoc),
+      loadAcumuladoActas(numeroContrato, tipoVinculo),
+      loadActasAnteriores(numeroContrato, tipoVinculo),
+      loadGrillaContrato(numeroContrato),
+      loadAcumuladoRemisiones(numeroContrato),
+      loadRemisionesAnteriores(numeroContrato),
+    ]);
 
     // Solo ítems del plano contratado (sin extras de actas anteriores).
     const items_contrato = attachGrillaToItemsPlano(itemsPlano, grilla_estado);
@@ -565,6 +693,8 @@ const getContextoActaMedida = async (req, res) => {
       acumulado_actas,
       actas_anteriores,
       grilla_estado,
+      acumulado_remisiones,
+      remisiones_anteriores,
     });
   } catch (error) {
     console.error('getContextoActaMedida:', error);

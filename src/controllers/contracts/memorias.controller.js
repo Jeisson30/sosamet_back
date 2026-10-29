@@ -53,6 +53,31 @@ async function nextConsecutivo() {
   return `MEM-${String(n).padStart(4, '0')}`;
 }
 
+async function resolveConsecutivoInsert(requested) {
+  const raw = String(requested || '').trim().toUpperCase();
+  if (!raw) return nextConsecutivo();
+  const exists = await queryAsync(
+    `SELECT id FROM memoria_facturacion WHERE UPPER(TRIM(consecutivo)) = ? LIMIT 1`,
+    [raw]
+  );
+  if (exists?.length) {
+    const err = new Error(`El consecutivo ${raw} ya existe.`);
+    err.status = 409;
+    throw err;
+  }
+  return raw;
+}
+
+/** Suministro / Instalación (PDF); no confundir con tipo documental Contrato/Cotización. */
+function resolveTipoServicio(cab) {
+  const candidates = [cab?.tipo_contrato, cab?.tipo_doc_catalogo, cab?.tipo_documento];
+  for (const c of candidates) {
+    const s = String(c || '').trim();
+    if (/suministro|instalaci/i.test(s)) return s;
+  }
+  return String(cab?.tipo_contrato || cab?.tipo_doc_catalogo || '').trim();
+}
+
 /** EAV guarda id; al usuario se muestra el nombre. */
 async function resolveEmpresaNombre(idOrName) {
   const v = String(idOrName ?? '').trim();
@@ -105,6 +130,8 @@ async function pivotContratoByNumero(numeroContrato) {
             THEN TRIM(c.valor_campo_doc) END) AS proyecto,
         MAX(CASE WHEN LOWER(c.nombre_campo_doc) = 'tipo_contrato'
             THEN TRIM(c.valor_campo_doc) END) AS tipo_contrato,
+        MAX(CASE WHEN LOWER(c.nombre_campo_doc) = 'tipo_doc_catalogo'
+            THEN TRIM(c.valor_campo_doc) END) AS tipo_doc_catalogo,
         MAX(CASE WHEN LOWER(c.nombre_campo_doc) = 'fecha_inicio'
             THEN TRIM(c.valor_campo_doc) END) AS fecha_inicio,
         MAX(CASE WHEN LOWER(c.nombre_campo_doc) = 'fecha_fin'
@@ -284,10 +311,17 @@ const getContexto = async (req, res) => {
     });
 
     let valorInicial = 0;
-    for (const it of items) valorInicial += toNum(it.vr_total);
+    let cantContratada = 0;
+    for (const it of items) {
+      valorInicial += toNum(it.vr_total);
+      cantContratada += toNum(it.cantidad_contratada);
+    }
+    let cantRemisionada = 0;
+    for (const r of remisiones) cantRemisionada += toNum(r.cantidad_enviada);
     const acumuladoAnterior = facturado.valor_facturado;
     const saldo = Math.max(0, valorInicial - acumuladoAnterior);
-    const pct = valorInicial > 0 ? (acumuladoAnterior / valorInicial) * 100 : 0;
+    // % Ejecutado = cantidades remisionadas vs contratadas (no valor de memorias).
+    const pct = cantContratada > 0 ? (cantRemisionada / cantContratada) * 100 : 0;
 
     const control = items.map((it) => {
       const acumCant = facturado.cantidad_por_item[it.item] || 0;
@@ -313,8 +347,9 @@ const getContexto = async (req, res) => {
         numero_contrato: cabecera.numero_contrato,
         constructora: cabecera.constructora,
         proyecto: cabecera.proyecto,
-        tipo_documento: tipo_documento || cabecera.tipo_contrato,
-        tipo_contrato: cabecera.tipo_contrato,
+        tipo_documento: tipo_documento || cabecera.tipo_doc_catalogo || cabecera.tipo_contrato,
+        tipo_contrato: resolveTipoServicio(cabecera) || cabecera.tipo_contrato,
+        tipo_doc_catalogo: cabecera.tipo_doc_catalogo,
         fecha_inicio: cabecera.fecha_inicio,
         fecha_fin: cabecera.fecha_fin,
         empresa_asociada: cabecera.empresa_asociada,
@@ -493,12 +528,16 @@ const obtener = async (req, res) => {
 function serializeEvidencias(raw) {
   if (!Array.isArray(raw) || !raw.length) return null;
   const clean = raw
-    .map((e) => ({
-      item: String(e?.item || '').trim(),
-      detalle: String(e?.detalle || '').trim(),
-      observaciones: String(e?.observaciones || '').trim(),
-    }))
-    .filter((e) => e.item || e.detalle || e.observaciones);
+    .map((e) => {
+      const fotoUrl = String(e?.fotoUrl || e?.foto_url || '').trim();
+      return {
+        item: String(e?.item || '').trim(),
+        detalle: String(e?.detalle || '').trim(),
+        observaciones: String(e?.observaciones || '').trim(),
+        ...(fotoUrl ? { fotoUrl } : {}),
+      };
+    })
+    .filter((e) => e.item || e.detalle || e.observaciones || e.fotoUrl);
   return clean.length ? JSON.stringify(clean) : null;
 }
 
@@ -632,7 +671,7 @@ const guardar = async (req, res) => {
         idExistente,
       ]);
     } else {
-      const consecutivo = await nextConsecutivo();
+      const consecutivo = await resolveConsecutivoInsert(cab.consecutivo);
       const evidenciasJson = serializeEvidencias(body.evidencias);
       const ins = await queryAsync(
         `INSERT INTO memoria_facturacion (
@@ -704,8 +743,29 @@ const guardar = async (req, res) => {
       totales,
     });
   } catch (error) {
+    if (error?.status === 409) {
+      return res.status(409).json({ mensaje: error.message });
+    }
     console.error('memorias.guardar:', error);
     return res.status(500).json({ mensaje: 'Error al guardar memoria.', error: error.message });
+  }
+};
+
+const uploadEvidencia = async (req, res) => {
+  if (!requireEditor(req, res)) return;
+  try {
+    if (!req.file?.filename) {
+      return res.status(400).json({ mensaje: 'Adjunte una imagen de evidencia.' });
+    }
+    const { toPublicUploadPath } = require('../../config/uploadsPath');
+    const pathRel = toPublicUploadPath(req.file.filename);
+    return res.status(200).json({
+      mensaje: 'Evidencia cargada.',
+      path: pathRel,
+    });
+  } catch (error) {
+    console.error('memorias.uploadEvidencia:', error);
+    return res.status(500).json({ mensaje: 'Error al subir evidencia.', error: error.message });
   }
 };
 
@@ -794,4 +854,5 @@ module.exports = {
   finalizar,
   anular,
   eliminar,
+  uploadEvidencia,
 };

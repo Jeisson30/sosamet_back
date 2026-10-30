@@ -25,7 +25,7 @@ const resolveNumerodoc = (remision_material, numerodoc, done) => {
   if (remision_material) {
     return db.query(
       `SELECT numerodoc
-         FROM sosamet.item_documentos
+         FROM item_documentos
         WHERE valor_campo_doc = ?
           AND nombre_campo_doc = 'remision_material'
         LIMIT 1`,
@@ -48,7 +48,7 @@ const upsertEavCampo = (docNumber, nombre, valor, done) => {
   }
   const v = String(valor).trim();
   db.query(
-    `SELECT id FROM sosamet.item_documentos
+    `SELECT id FROM item_documentos
       WHERE numerodoc = ?
         AND nombre_campo_doc = ?
       LIMIT 1`,
@@ -57,7 +57,7 @@ const upsertEavCampo = (docNumber, nombre, valor, done) => {
       if (selErr) return done(selErr);
       if (selRows && selRows.length) {
         db.query(
-          `UPDATE sosamet.item_documentos
+          `UPDATE item_documentos
               SET valor_campo_doc = ?
             WHERE numerodoc = ?
               AND nombre_campo_doc = ?`,
@@ -135,7 +135,7 @@ const consultRemissions = (req, res) => {
 
     db.query(
       `SELECT numerodoc, valor_campo_doc AS remision_material
-         FROM sosamet.item_documentos
+         FROM item_documentos
         WHERE nombre_campo_doc = 'remision_material'
           AND valor_campo_doc IN (?)`,
       [remisiones],
@@ -191,7 +191,7 @@ const consultRemissions = (req, res) => {
 
         db.query(
           `SELECT numerodoc, nombre_campo_doc, valor_campo_doc
-             FROM sosamet.item_documentos
+             FROM item_documentos
             WHERE numerodoc IN (?)
               AND nombre_campo_doc IN (
                 'tipo_doc_rem', 'tipo_contrato', 'estado', 'elaboro',
@@ -361,7 +361,7 @@ const updateRemission = (req, res) => {
 
       if (Number.isFinite(itemId) && itemId > 0) {
         db.query(
-          `UPDATE sosamet.remisiones_plano
+          `UPDATE remisiones_plano
               SET empresa = ?,
                   item = COALESCE(?, item),
                   cantidad = ?,
@@ -434,7 +434,7 @@ const updateRemission = (req, res) => {
           if (!item) return cb();
           db.query(
             `SELECT valor_campo_doc AS contrato
-               FROM sosamet.item_documentos
+               FROM item_documentos
               WHERE numerodoc = ?
                 AND nombre_campo_doc = 'numero_contrato'
               LIMIT 1`,
@@ -446,7 +446,7 @@ const updateRemission = (req, res) => {
                 null;
               if (!c) return cb();
               db.query(
-                `SELECT id FROM sosamet.remisiones_plano
+                `SELECT id FROM remisiones_plano
                   WHERE (
                       (numerodoc IS NOT NULL AND TRIM(numerodoc) = TRIM(?))
                       OR (
@@ -512,7 +512,7 @@ const deleteRemissionDetalle = (req, res) => {
   }
 
   db.query(
-    `DELETE FROM sosamet.remisiones_plano WHERE id = ?`,
+    `DELETE FROM remisiones_plano WHERE id = ?`,
     [id],
     (err, result) => {
       if (err) {

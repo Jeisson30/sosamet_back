@@ -155,15 +155,16 @@ const uploadExcelRemisiones = async (req, res) => {
       }
 
       // No permitir insertar si ya existe el mismo número de remisión en BD
-      // (con o sin prefijo SM/HS).
+      // (con o sin prefijo SM/HS/DMS).
       const remUpper = remisionMaterialTrim.toUpperCase();
-      const remBare = remUpper.replace(/^(SM|HS)/, "");
+      const remBare = remUpper.replace(/^(SM|HS|DMS)/, "");
       const existing = await ejecutarQuery(
         `SELECT numerodoc, TRIM(valor_campo_doc) AS remision_material
            FROM item_documentos
           WHERE nombre_campo_doc = 'remision_material'
             AND (
               UPPER(TRIM(valor_campo_doc)) = ?
+              OR UPPER(TRIM(valor_campo_doc)) = ?
               OR UPPER(TRIM(valor_campo_doc)) = ?
               OR UPPER(TRIM(valor_campo_doc)) = ?
               OR UPPER(TRIM(valor_campo_doc)) = ?
@@ -174,6 +175,7 @@ const uploadExcelRemisiones = async (req, res) => {
           remBare,
           `SM${remBare}`,
           `HS${remBare}`,
+          `DMS${remBare}`,
         ]
       );
 

@@ -1,12 +1,28 @@
 const db = require('../config/db');
 
+/** Schema de la conexión (.env DB_NAME). Evita leer otra BD por default del servidor MySQL. */
+const dbName = () => {
+  const name = String(process.env.DB_NAME || '').trim();
+  if (!/^[a-zA-Z0-9_]+$/.test(name)) {
+    throw new Error('DB_NAME inválido o vacío');
+  }
+  return name;
+};
+
 const getConstructoras = (req, res) => {
+  let schema;
+  try {
+    schema = dbName();
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+
   db.query(
     `SELECT id_constructora AS id,
             nombre,
             nit,
             estado
-       FROM sosamet.constructoras
+       FROM \`${schema}\`.constructoras
       WHERE estado = 'ACTIVO'
       ORDER BY nombre`,
     (err, results) => {
@@ -16,6 +32,8 @@ const getConstructoras = (req, res) => {
           detalle: err,
         });
       }
+      res.set('Cache-Control', 'no-store');
+      res.set('X-Sosamet-DB', schema);
       return res.status(200).json(results || []);
     }
   );
@@ -23,13 +41,19 @@ const getConstructoras = (req, res) => {
 
 const getProyectosByConstructora = (req, res) => {
   const { idConstructora } = req.params;
+  let schema;
+  try {
+    schema = dbName();
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
 
   db.query(
     `SELECT id_proyecto AS id,
             nombre,
             id_constructora AS idConstructora,
             estado
-       FROM sosamet.proyectos_constructoras
+       FROM \`${schema}\`.proyectos_constructoras
       WHERE estado = 'ACTIVO'
         AND id_constructora = ?
       ORDER BY nombre`,
@@ -41,6 +65,8 @@ const getProyectosByConstructora = (req, res) => {
           detalle: err,
         });
       }
+      res.set('Cache-Control', 'no-store');
+      res.set('X-Sosamet-DB', schema);
       return res.status(200).json(results || []);
     }
   );

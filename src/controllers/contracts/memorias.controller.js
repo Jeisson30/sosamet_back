@@ -205,12 +205,23 @@ async function loadContratoItems(numerodoc) {
   return [...map.values()];
 }
 
+/**
+ * Remisiones del contrato para Memorias.
+ * 1) Match exacto por EAV numero_contrato o remisiones_plano.contrato
+ * 2) Misma obra (cliente/constructora + proyecto) + prefijo común
+ *    (PORTICO/PORTICOS, DINTEL/DINTELES) — tipografía inconsistente en prod
+ * 3) Plano sin numerodoc (Excel legado): por columna contrato
+ */
 async function loadRemisionesContrato(filtros) {
-  const { constructora, proyecto, numero_contrato } = filtros;
+  const nc = String(filtros.numero_contrato || '').trim();
+  const cons = String(filtros.constructora || '').trim() || null;
+  const proy = String(filtros.proyecto || '').trim() || null;
+  if (!nc) return [];
+
   const rows = await queryAsync(
-    `SELECT
+    `SELECT DISTINCT
         r.id AS remision_plano_id,
-        r.numerodoc AS remision_numerodoc,
+        COALESCE(r.numerodoc, d.numerodoc) AS remision_numerodoc,
         r.item,
         r.cantidad,
         r.um,
@@ -219,34 +230,62 @@ async function loadRemisionesContrato(filtros) {
         r.fecha_creacion,
         d.remision_material,
         d.fecha_remision,
-        d.numero_contrato,
-        d.constructora,
+        COALESCE(d.numero_contrato, r.contrato) AS numero_contrato,
+        COALESCE(NULLIF(TRIM(d.cliente), ''), NULLIF(TRIM(d.constructora_campo), '')) AS constructora,
         d.proyecto,
         d.tipo_doc_rem
       FROM remisiones_plano r
-      INNER JOIN (
+      LEFT JOIN (
         SELECT
           numerodoc,
           MAX(CASE WHEN nombre_campo_doc = 'remision_material' THEN valor_campo_doc END) AS remision_material,
           MAX(CASE WHEN nombre_campo_doc = 'fecha_remision' THEN valor_campo_doc END) AS fecha_remision,
           MAX(CASE WHEN nombre_campo_doc = 'numero_contrato' THEN valor_campo_doc END) AS numero_contrato,
-          MAX(CASE WHEN nombre_campo_doc = 'cliente' THEN valor_campo_doc END) AS constructora,
+          MAX(CASE WHEN nombre_campo_doc = 'cliente' THEN valor_campo_doc END) AS cliente,
+          MAX(CASE WHEN nombre_campo_doc = 'constructora' THEN valor_campo_doc END) AS constructora_campo,
           MAX(CASE WHEN nombre_campo_doc = 'proyecto' THEN valor_campo_doc END) AS proyecto,
           MAX(CASE WHEN nombre_campo_doc = 'tipo_doc_rem' THEN valor_campo_doc END) AS tipo_doc_rem
         FROM item_documentos
         WHERE UPPER(TRIM(tipo_doc)) = 'REMISIONES'
         GROUP BY numerodoc
       ) d ON d.numerodoc = r.numerodoc
-     WHERE TRIM(IFNULL(d.numero_contrato,'')) = ?
-       AND (? IS NULL OR TRIM(IFNULL(d.constructora,'')) = ?)
-       AND (? IS NULL OR TRIM(IFNULL(d.proyecto,'')) = ?)
+     WHERE
+       /* Exacto: EAV o columna plano */
+       (
+         UPPER(TRIM(IFNULL(d.numero_contrato, ''))) = UPPER(?)
+         OR UPPER(TRIM(IFNULL(r.contrato, ''))) = UPPER(?)
+       )
+       OR
+       /* Misma obra + N° con prefijo común (typos prod) */
+       (
+         ? IS NOT NULL AND ? IS NOT NULL
+         AND UPPER(TRIM(IFNULL(NULLIF(TRIM(d.cliente), ''), IFNULL(d.constructora_campo, '')))) = UPPER(?)
+         AND UPPER(TRIM(IFNULL(d.proyecto, ''))) = UPPER(?)
+         AND CHAR_LENGTH(TRIM(IFNULL(d.numero_contrato, ''))) >= 4
+         AND CHAR_LENGTH(?) >= 4
+         AND (
+           UPPER(TRIM(d.numero_contrato)) LIKE CONCAT(UPPER(?), '%')
+           OR UPPER(?) LIKE CONCAT(UPPER(TRIM(d.numero_contrato)), '%')
+         )
+       )
+       OR
+       /* Excel legado sin cabecera RM */
+       (
+         r.numerodoc IS NULL
+         AND UPPER(TRIM(IFNULL(r.contrato, ''))) = UPPER(?)
+       )
      ORDER BY r.fecha_creacion DESC, r.id DESC`,
     [
-      String(numero_contrato).trim(),
-      constructora || null,
-      constructora || null,
-      proyecto || null,
-      proyecto || null,
+      nc,
+      nc,
+      cons,
+      proy,
+      cons,
+      proy,
+      nc,
+      nc,
+      nc,
+      nc,
     ]
   );
   return rows || [];

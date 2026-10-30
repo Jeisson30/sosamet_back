@@ -4,6 +4,7 @@ const db = require("../../config/db");
 const REMISION_FLOOR = {
   SM: 19442,
   HS: 2333,
+  DMS: 1,
 };
 
 /** Actas de medida producción: último usado 026-183 → siguiente a asignar 026-184. */
@@ -94,7 +95,7 @@ const extractDigits = (raw) => {
  * Peek del siguiente consecutivo (NO incrementa contador).
  * Query/body:
  *  - tipo: ACTAS_DE_MEDIDA | REMISIONES
- *  - empresa_asociada: 1 (SM) | 2 (HS) — obligatorio para remisiones
+ *  - empresa_asociada: 1 (SM) | 2 (HS) | 3 (DMS) — obligatorio para remisiones
  */
 const siguienteConsecutivo = async (req, res) => {
   try {
@@ -138,13 +139,14 @@ const siguienteConsecutivo = async (req, res) => {
 
     if (tipo === "REMISIONES" || tipo === "REMISION") {
       const empresa = String(src.empresa_asociada ?? src.empresa ?? "").trim();
-      if (empresa !== "1" && empresa !== "2") {
+      if (empresa !== "1" && empresa !== "2" && empresa !== "3") {
         return res.status(400).json({
           mensaje:
-            "Para remisiones debe indicar empresa_asociada (1=SM, 2=HS).",
+            "Para remisiones debe indicar empresa_asociada (1=SM, 2=HS, 3=DMS).",
         });
       }
-      const prefijo = empresa === "2" ? "HS" : "SM";
+      const prefijo =
+        empresa === "2" ? "HS" : empresa === "3" ? "DMS" : "SM";
       const floor = REMISION_FLOOR[prefijo];
       // Dígitos del piso (+1 margen de crecimiento). Evita basura tipo SM192304 / HS21031.
       const maxDigits = String(floor).length + 1;

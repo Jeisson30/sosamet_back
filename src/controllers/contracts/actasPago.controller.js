@@ -35,9 +35,11 @@ const requireEditor = (req, res) => {
 
 /** Prefijo por empresa asociada: SOSA / HIERROS / DMS (fallback PAGO). */
 function prefixFromEmpresa(empresa) {
-  const n = String(empresa || '')
-    .trim()
-    .toUpperCase();
+  const raw = String(empresa || '').trim();
+  if (raw === '3') return 'DMS';
+  if (raw === '2') return 'HIERROS';
+  if (raw === '1') return 'SOSA';
+  const n = raw.toUpperCase();
   if (n.includes('DMS')) return 'DMS';
   if (n.includes('HIERRO') || /\bHS\b/.test(n) || n.includes('H&S')) return 'HIERROS';
   if (n.includes('SOSAMET') || n.includes('SOSA')) return 'SOSA';

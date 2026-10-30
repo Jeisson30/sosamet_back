@@ -4,7 +4,7 @@ const dotenv = require("dotenv");
 const rateLimit = require("express-rate-limit");
 const path = require("path");
 // Cargar .env ANTES de cualquier otro require (db, rutas, controllers).
-dotenv.config({ override: true });
+dotenv.config({ override: true, path: path.join(__dirname, '.env') });
 
 const db = require("./src/config/db");
 
@@ -91,6 +91,13 @@ const allowedOrigins = [
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
   }));
+
+// Evita 304 con datos viejos de otra BD/sesión (catálogos dinámicos).
+app.set('etag', false);
+app.use('/api', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
   
 // Inventario recibe archivos planos con miles de ítems; el parser general sigue en 100kb.
 app.use('/api/inventario', express.json({ limit: '5mb' }));

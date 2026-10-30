@@ -138,7 +138,7 @@ const listarConstructorasInactivas = () =>
               nit,
               estado,
               fecha_creacion
-         FROM sosamet.constructoras
+         FROM constructoras
         WHERE estado = 'INACTIVO'
         ORDER BY nombre`,
       (err, results) => {
@@ -156,7 +156,7 @@ const listarProyectosInactivos = (idConstructora) =>
               id_constructora,
               estado,
               fecha_creacion
-         FROM sosamet.proyectos_constructoras
+         FROM proyectos_constructoras
         WHERE id_constructora = ?
           AND estado = 'INACTIVO'
         ORDER BY nombre`,

@@ -1,6 +1,8 @@
 const mysql = require('mysql2');
 const dotenv = require('dotenv');
-dotenv.config({ override: true });
+const path = require('path');
+// Forzar .env del backend (evita cwd distinto → otra BD).
+dotenv.config({ override: true, path: path.join(__dirname, '../../.env') });
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -17,10 +19,13 @@ pool.getConnection((err, connection) => {
     console.error('Error conectando a la base de datos:', err);
     return;
   }
-  console.log(
-    `//===== Conectado a MySQL (${process.env.DB_HOST})  =====  \\`
-  );
-  connection.release();
+  connection.query('SELECT DATABASE() AS db', (qErr, rows) => {
+    const liveDb = qErr ? '?' : rows?.[0]?.db;
+    console.log(
+      `//===== Conectado a MySQL (${process.env.DB_HOST} / ${process.env.DB_NAME} → live=${liveDb})  =====  \\`
+    );
+    connection.release();
+  });
 });
 
 pool.on('connection', (connection) => {

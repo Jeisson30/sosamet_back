@@ -178,6 +178,38 @@ const registrarMovimiento = async (req, res) => {
   }
 
   try {
+    // OBS-27-OCT: no permitir reutilizar N° factura/documento de un INGRESO activo.
+    // Varios ítems del mismo ingreso pueden compartir el mismo no_doc (flujo actual).
+    if (tipo === 'INGRESO') {
+      const docs = [
+        ...new Set(
+          items
+            .map((it) => textoONull(it.no_doc)?.toUpperCase())
+            .filter(Boolean)
+        ),
+      ];
+      for (const noDoc of docs) {
+        const rows = await query(
+          `SELECT d.no_doc
+             FROM inv_movimiento_detalle d
+             INNER JOIN inv_movimiento m ON m.id_movimiento = d.id_movimiento
+            WHERE m.tipo_movimiento = 'INGRESO'
+              AND IFNULL(m.estado, '') <> 'ANULADO'
+              AND IFNULL(d.estado, '') <> 'ELIMINADO'
+              AND TRIM(d.no_doc) <> ''
+              AND UPPER(TRIM(d.no_doc)) = ?
+            LIMIT 1`,
+          [noDoc]
+        );
+        if (rows?.length) {
+          return res.status(400).json({
+            codigo: 0,
+            mensaje: `El número de factura / documento «${noDoc}» ya está registrado en un ingreso activo. Use otro número o consulte el ingreso existente.`,
+          });
+        }
+      }
+    }
+
     const results = await query('CALL SP_INV_REGISTRAR_MOVIMIENTO(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
       tipo,
       origen,

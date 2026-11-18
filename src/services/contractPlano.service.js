@@ -1,12 +1,29 @@
 const XLSX = require('xlsx');
 
-const parseNumber = (value) => {
+/**
+ * Parseo seguro para CALL SP.
+ * - tryParseNumber: null si vacío/inválido (para saltar filas TOTAL).
+ * - parseNumber: siempre número finito (nunca NaN → MySQL "Unknown column 'NaN'").
+ */
+const tryParseNumber = (value) => {
+  if (value == null || value === '') return null;
   if (typeof value === 'string') {
-    return parseFloat(
-      value.replace(/[^0-9,-.]+/g, '').replace(',', '.')
-    );
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const cleaned = trimmed.replace(/[^0-9,-.]+/g, '').replace(',', '.');
+    if (!cleaned || cleaned === '-' || cleaned === '.' || cleaned === ',') {
+      return null;
+    }
+    const n = parseFloat(cleaned);
+    return Number.isFinite(n) ? n : null;
   }
-  return value || 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+
+const parseNumber = (value) => {
+  const n = tryParseNumber(value);
+  return n == null ? 0 : n;
 };
 
 const normalize = (str) =>
@@ -101,12 +118,12 @@ const insertAiuRowsFromSheet = async (
 
   for (const row of aiuData) {
     const item = row[getKey(row, 'ITEM')];
-    const vrIva = parseNumber(row[getKey(row, 'VR IVA')]);
+    const vrIva = tryParseNumber(row[getKey(row, 'VR IVA')]);
 
     if (
       !item ||
       (typeof item === 'string' && item.toUpperCase().includes('TOTAL')) ||
-      isNaN(vrIva)
+      vrIva == null
     ) {
       continue;
     }
@@ -181,12 +198,12 @@ const insertIvaRowsFromSheet = async (
 
   for (const row of ivaData) {
     const item = row[getKey(row, 'ITEM')];
-    const vrIva = parseNumber(row[getKey(row, 'VR IVA')]);
+    const vrIva = tryParseNumber(row[getKey(row, 'VR IVA')]);
 
     if (
       !item ||
       (typeof item === 'string' && item.toUpperCase().includes('TOTAL')) ||
-      isNaN(vrIva)
+      vrIva == null
     ) {
       continue;
     }

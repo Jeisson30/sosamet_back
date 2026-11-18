@@ -185,14 +185,17 @@ async function loadContratoItems(numerodoc) {
     const key = String(row.item || '').trim();
     if (!key || map.has(key)) continue;
     const cant = toNum(row.cantidad_contratada);
+    // valor_base AIU/IVA = total de línea antes de impuestos → unitario = base / cant
     const base = toNum(row.valor_base);
+    const valorUnitarioBase =
+      cant > 0 ? Number((base / cant).toFixed(4)) : base;
     map.set(key, {
       item: key,
       insumo: row.insumo,
       detalle: row.detalle,
       um: row.um,
       cantidad_contratada: cant,
-      valor_unitario: cant > 0 ? base / cant : base,
+      valor_unitario: valorUnitarioBase,
       valor_base: base,
       porc_adm: toNum(row.porc_adm),
       porc_imp: toNum(row.porc_imp),
@@ -555,8 +558,14 @@ const obtener = async (req, res) => {
         }
       }
     }
+    const parsedEv = parseEvidenciasJson(header.evidencias_json);
     return res.status(200).json(
-      withMemoriaValues(req.user, { header, detalle: detalle || [] })
+      withMemoriaValues(req.user, {
+        header,
+        detalle: detalle || [],
+        descripciones: parsedEv.descripciones || {},
+        evidencias: parsedEv.rows || [],
+      })
     );
   } catch (error) {
     console.error('memorias.obtener:', error);
@@ -564,9 +573,10 @@ const obtener = async (req, res) => {
   }
 };
 
-function serializeEvidencias(raw) {
-  if (!Array.isArray(raw) || !raw.length) return null;
-  const clean = raw
+/** Evidencias (array legacy o { v:2, rows, descripciones }). */
+function cleanEvidenciaRows(raw) {
+  if (!Array.isArray(raw) || !raw.length) return [];
+  return raw
     .map((e) => {
       const fotoUrl = String(e?.fotoUrl || e?.foto_url || '').trim();
       return {
@@ -577,7 +587,62 @@ function serializeEvidencias(raw) {
       };
     })
     .filter((e) => e.item || e.detalle || e.observaciones || e.fotoUrl);
-  return clean.length ? JSON.stringify(clean) : null;
+}
+
+function normalizeDescripciones(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(raw)) {
+    const item = String(k || '').trim();
+    if (!item) continue;
+    out[item] = v == null ? '' : String(v);
+  }
+  return out;
+}
+
+/**
+ * Guarda evidencias + mapa de descripciones editadas del control.
+ * Formato v2: { v:2, rows:[...], descripciones:{ item: texto } }
+ * Legacy: array puro (solo evidencias).
+ */
+function serializeEvidencias(raw, descripciones) {
+  const rows = cleanEvidenciaRows(Array.isArray(raw) ? raw : raw?.rows);
+  const desc = normalizeDescripciones(
+    descripciones != null ? descripciones : raw?.descripciones
+  );
+  const hasDesc = Object.keys(desc).length > 0;
+  if (!rows.length && !hasDesc) return null;
+  if (hasDesc) {
+    return JSON.stringify({ v: 2, rows, descripciones: desc });
+  }
+  return JSON.stringify(rows);
+}
+
+function parseEvidenciasJson(raw) {
+  if (!raw) return { rows: [], descripciones: {} };
+  let parsed = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { rows: [], descripciones: {} };
+    }
+  }
+  if (Array.isArray(parsed)) {
+    return { rows: parsed, descripciones: {} };
+  }
+  if (parsed && typeof parsed === 'object') {
+    const rows = Array.isArray(parsed.rows)
+      ? parsed.rows
+      : Array.isArray(parsed.items)
+        ? parsed.items
+        : [];
+    return {
+      rows,
+      descripciones: normalizeDescripciones(parsed.descripciones),
+    };
+  }
+  return { rows: [], descripciones: {} };
 }
 
 function calcTotales(lineas, porcentajes) {
@@ -671,7 +736,7 @@ const guardar = async (req, res) => {
           mensaje: 'Solo se pueden editar memorias en borrador o guardadas.',
         });
       }
-      const evidenciasJson = serializeEvidencias(body.evidencias);
+      const evidenciasJson = serializeEvidencias(body.evidencias, body.descripciones);
       await queryAsync(
         `UPDATE memoria_facturacion SET
             numero_contrato = ?, numerodoc_contrato = ?,
@@ -711,7 +776,7 @@ const guardar = async (req, res) => {
       ]);
     } else {
       const consecutivo = await resolveConsecutivoInsert(cab.consecutivo);
-      const evidenciasJson = serializeEvidencias(body.evidencias);
+      const evidenciasJson = serializeEvidencias(body.evidencias, body.descripciones);
       const ins = await queryAsync(
         `INSERT INTO memoria_facturacion (
             consecutivo, numerodoc_contrato, numero_contrato, constructora, proyecto,
@@ -746,7 +811,15 @@ const guardar = async (req, res) => {
       idMemoria = ins.insertId;
     }
 
+    const descMap = normalizeDescripciones(body.descripciones);
     for (const l of lineas) {
+      const itemKey = String(l.item || '').trim();
+      const detalleFinal =
+        itemKey && Object.prototype.hasOwnProperty.call(descMap, itemKey)
+          ? descMap[itemKey]
+          : l.detalle != null
+            ? String(l.detalle)
+            : null;
       await queryAsync(
         `INSERT INTO memoria_facturacion_detalle (
             id_memoria, remision_plano_id, remision_numerodoc, remision_material,
@@ -759,7 +832,7 @@ const guardar = async (req, res) => {
           l.remision_numerodoc || null,
           l.remision_material || null,
           l.item || null,
-          l.detalle || null,
+          detalleFinal,
           l.um || null,
           toNum(l.cantidad_enviada),
           toNum(l.cantidad_facturar),

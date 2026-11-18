@@ -33,32 +33,49 @@ const requireEditor = (req, res) => {
   return true;
 };
 
-/** Prefijo por empresa asociada: SOSA / HIERROS / DMS (fallback PAGO). */
+/**
+ * Prefijo vigente por empresa (el número continúa la serie histórica).
+ * Sosamet → SOP (histórico SOSA) | Hierros → HS (histórico HIERROS) | DMS → DM
+ */
 function prefixFromEmpresa(empresa) {
   const raw = String(empresa || '').trim();
-  if (raw === '3') return 'DMS';
-  if (raw === '2') return 'HIERROS';
-  if (raw === '1') return 'SOSA';
+  if (raw === '3') return 'DM';
+  if (raw === '2') return 'HS';
+  if (raw === '1') return 'SOP';
   const n = raw.toUpperCase();
-  if (n.includes('DMS')) return 'DMS';
-  if (n.includes('HIERRO') || /\bHS\b/.test(n) || n.includes('H&S')) return 'HIERROS';
-  if (n.includes('SOSAMET') || n.includes('SOSA')) return 'SOSA';
+  if (n.includes('DMS') || /\bDM\b/.test(n)) return 'DM';
+  if (n.includes('HIERRO') || /\bHS\b/.test(n) || n.includes('H&S')) return 'HS';
+  if (n.includes('SOSAMET') || n.includes('SOSA') || /\bSOP\b/.test(n)) return 'SOP';
   return 'PAGO';
+}
+
+/** Prefijos que comparten la misma serie numérica (nuevo + histórico). */
+function seriesPrefixes(prefix) {
+  const p = String(prefix || '').toUpperCase();
+  if (p === 'SOP') return ['SOP', 'SOSA'];
+  if (p === 'HS') return ['HS', 'HIERROS'];
+  if (p === 'DM') return ['DM', 'DMS'];
+  return [p];
 }
 
 async function nextConsecutivo(empresa) {
   const prefix = prefixFromEmpresa(empresa);
+  const aliases = seriesPrefixes(prefix);
+  const likes = aliases.map(() => 'consecutivo LIKE ?').join(' OR ');
   const rows = await queryAsync(
-    `SELECT consecutivo FROM acta_pago
-      WHERE consecutivo LIKE ?
-      ORDER BY id DESC LIMIT 1`,
-    [`${prefix}-%`]
+    `SELECT consecutivo FROM acta_pago WHERE ${likes}`,
+    aliases.map((a) => `${a}-%`)
   );
-  const last = rows?.[0]?.consecutivo || '';
-  const re = new RegExp(`^${prefix}-(\\d+)$`, 'i');
-  const m = String(last).match(re);
-  const n = m ? Number(m[1]) + 1 : 1;
-  return `${prefix}-${String(n).padStart(4, '0')}`;
+  let maxN = 0;
+  const re = new RegExp(
+    `^(?:${aliases.map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})-(\\d+)$`,
+    'i'
+  );
+  for (const row of rows || []) {
+    const m = String(row.consecutivo || '').trim().match(re);
+    if (m) maxN = Math.max(maxN, Number(m[1]) || 0);
+  }
+  return `${prefix}-${String(maxN + 1).padStart(4, '0')}`;
 }
 
 async function assertConsecutivoLibre(consecutivo, excludeId = null) {
@@ -416,7 +433,8 @@ const listar = async (req, res) => {
     const rows = await queryAsync(
       `SELECT id, consecutivo, id_memoria, memoria_consecutivo, numero_contrato,
               constructora, proyecto, empresa_asociada, tipo_documento_pago,
-              tipo_pago, estado, fecha_emision, fecha_pago, valor_a_pagar,
+              tipo_pago, estado, fecha_radicado, fecha_vencimiento,
+              fecha_emision, fecha_pago, valor_a_pagar,
               valor_acta, fecha_creacion
          FROM acta_pago
         WHERE ${where.join(' AND ')}
@@ -430,7 +448,8 @@ const listar = async (req, res) => {
     const data = [];
     for (const row of rows || []) {
       let dias = null;
-      const fe = row.fecha_emision || row.fecha_creacion;
+      // Tiempo desde fecha de radicado (fallback emisión / creación).
+      const fe = row.fecha_radicado || row.fecha_emision || row.fecha_creacion;
       if (fe) {
         const d = new Date(fe);
         if (!Number.isNaN(d.getTime())) {
@@ -568,6 +587,9 @@ const guardar = async (req, res) => {
     const fecha_emision =
       cab.fecha_emision ||
       new Date().toISOString().slice(0, 10);
+    const fecha_radicado = String(cab.fecha_radicado || '').trim() || null;
+    const fecha_vencimiento =
+      String(cab.fecha_vencimiento || '').trim() || null;
     const recibo_caja = String(cab.recibo_caja || '').trim() || null;
     const fecha_pago = String(cab.fecha_pago || '').trim() || null;
     let estado = String(cab.estado || 'EN_REVISION').trim().toUpperCase();
@@ -597,6 +619,8 @@ const guardar = async (req, res) => {
             tipo_documento_pago = ?,
             tipo_pago = ?,
             estado = ?,
+            fecha_radicado = ?,
+            fecha_vencimiento = ?,
             fecha_emision = ?,
             recibo_caja = ?,
             fecha_pago = ?,
@@ -620,6 +644,8 @@ const guardar = async (req, res) => {
           tipo_documento_pago || null,
           tipo_pago || null,
           estado,
+          fecha_radicado,
+          fecha_vencimiento,
           fecha_emision,
           recibo_caja,
           fecha_pago,
@@ -649,16 +675,19 @@ const guardar = async (req, res) => {
         (await nextConsecutivo(empresa));
       const ins = await queryAsync(
         `INSERT INTO acta_pago (
-            consecutivo, id_memoria, memoria_consecutivo, numerodoc_contrato,
+            consecutivo, fecha_radicado, fecha_vencimiento,
+            id_memoria, memoria_consecutivo, numerodoc_contrato,
             numero_contrato, constructora, proyecto, tipo_documento,
             empresa_asociada, tipo_documento_pago, tipo_pago, estado,
             fecha_emision, recibo_caja, fecha_pago,
             valor_contrato, valor_acta, total_descuentos,
             valor_a_pagar, pagos_anteriores, saldo_por_pagar, observaciones,
             id_usuario
-          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           consecutivo,
+          fecha_radicado,
+          fecha_vencimiento,
           id_memoria,
           mem.consecutivo,
           mem.numerodoc_contrato,

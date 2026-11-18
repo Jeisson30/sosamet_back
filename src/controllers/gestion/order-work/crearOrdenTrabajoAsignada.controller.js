@@ -37,6 +37,14 @@ const crearOrdenTrabajoAsignada = (req, res) => {
     });
   }
 
+  const empresaId = Number(empresa_asociada_id);
+  if (!Number.isFinite(empresaId) || empresaId <= 0) {
+    return res.status(400).json({
+      Codigo: 0,
+      Mensaje: "Debe seleccionar la Empresa Asociada.",
+    });
+  }
+
   if (!encargado_id) {
     return res.status(400).json({
       Codigo: 0,
@@ -90,7 +98,7 @@ const crearOrdenTrabajoAsignada = (req, res) => {
     "CALL SP_CREAR_ORDEN_TRABAJO(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       String(consecutivo).trim(),
-      empresa_asociada_id || null,
+      empresaId,
       Number(encargado_id),
       fechaMysql,
       observaciones || null,

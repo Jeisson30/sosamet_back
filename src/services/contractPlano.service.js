@@ -113,8 +113,14 @@ const insertAiuRowsFromSheet = async (
 
     const empresa = row[getKey(row, 'EMPRESA')] || null;
 
+    const observacionesRaw = row[getKey(row, 'OBSERVACIONES')];
+    const observaciones =
+      observacionesRaw != null && String(observacionesRaw).trim() !== ''
+        ? String(observacionesRaw).trim()
+        : null;
+
     await queryTx(
-      `CALL sp_insertar_aiu(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `CALL sp_insertar_aiu(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         row[getKey(row, 'ITEM')],
         empresa,
@@ -125,6 +131,7 @@ const insertAiuRowsFromSheet = async (
         parseNumber(row[getKey(row, 'ANCHO')]),
         parseNumber(row[getKey(row, 'ALTO')]),
         row[getKey(row, 'DESCRIPCION')],
+        observaciones,
         parseNumber(row[getKey(row, 'VALOR BASE')]),
         parseNumber(row[getKey(row, '% ADM')]),
         parseNumber(row[getKey(row, 'VR ADM')]),
@@ -186,8 +193,14 @@ const insertIvaRowsFromSheet = async (
 
     const empresa = row[getKey(row, 'EMPRESA')];
 
+    const observacionesRaw = row[getKey(row, 'OBSERVACIONES')];
+    const observaciones =
+      observacionesRaw != null && String(observacionesRaw).trim() !== ''
+        ? String(observacionesRaw).trim()
+        : null;
+
     await queryTx(
-      `CALL sp_insertar_iva_pleno(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `CALL sp_insertar_iva_pleno(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         row[getKey(row, 'ITEM')],
         empresa,
@@ -198,6 +211,7 @@ const insertIvaRowsFromSheet = async (
         parseNumber(row[getKey(row, 'ANCHO')]),
         parseNumber(row[getKey(row, 'ALTO')]),
         row[getKey(row, 'DESCRIPCION')],
+        observaciones,
         parseNumber(row[getKey(row, 'VALOR BASE')]),
         parseNumber(row[getKey(row, '% IVA')]),
         parseNumber(row[getKey(row, 'VR IVA')]),

@@ -185,17 +185,16 @@ async function loadContratoItems(numerodoc) {
     const key = String(row.item || '').trim();
     if (!key || map.has(key)) continue;
     const cant = toNum(row.cantidad_contratada);
-    // valor_base AIU/IVA = total de línea antes de impuestos → unitario = base / cant
+    // valor_base en AIU/IVA = valor unitario (mismo V.base del plano / consulta).
+    // No dividir por cant: eso deforma el unitario (p.ej. 596000/8.5 → 70117).
     const base = toNum(row.valor_base);
-    const valorUnitarioBase =
-      cant > 0 ? Number((base / cant).toFixed(4)) : base;
     map.set(key, {
       item: key,
       insumo: row.insumo,
       detalle: row.detalle,
       um: row.um,
       cantidad_contratada: cant,
-      valor_unitario: valorUnitarioBase,
+      valor_unitario: base,
       valor_base: base,
       porc_adm: toNum(row.porc_adm),
       porc_imp: toNum(row.porc_imp),

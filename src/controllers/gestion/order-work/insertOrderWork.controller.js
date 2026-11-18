@@ -37,6 +37,13 @@ const insertOrderWork = async (req, res) => {
     });
   }
 
+  const empresaId = Number(empresa_asociada_id);
+  if (!Number.isFinite(empresaId) || empresaId <= 0) {
+    return res.status(400).json({
+      message: "Debe seleccionar la Empresa Asociada.",
+    });
+  }
+
   let connection;
 
   try {
@@ -69,7 +76,7 @@ const insertOrderWork = async (req, res) => {
         "CALL sp_insert_order_work(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
           consecutivo,
-          empresa_asociada_id || null,
+          empresaId,
           encargado_id,
           fechaMysql,
           observaciones || null,

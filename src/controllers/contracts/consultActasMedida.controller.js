@@ -15,6 +15,29 @@ const toNumOrNull = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 
+/** DATE MySQL: acepta YYYY-MM-DD o ISO (`…T…Z`) → solo fecha. */
+const toDateOnly = (v) => {
+  const raw = toNull(v);
+  if (raw == null) return null;
+  if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+    const y = raw.getUTCFullYear();
+    const m = String(raw.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(raw.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(raw).trim();
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  const parsed = new Date(s);
+  if (!Number.isNaN(parsed.getTime())) {
+    const y = parsed.getUTCFullYear();
+    const mo = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(parsed.getUTCDate()).padStart(2, "0");
+    return `${y}-${mo}-${d}`;
+  }
+  return null;
+};
+
 /** Adjunto general del acta (Adjuntar Acta) en item_documentos.archivo_acta. */
 const loadArchivosActaByConsecutivo = (consecutivos, callback) => {
   const keys = [
@@ -223,8 +246,8 @@ const updateActasMedida = (req, res) => {
         [
           toNull(body.consecutivo_item),
           toNull(body.evidencia_item),
-          toNull(body.fecha_enviado),
-          toNull(body.fecha_aprobado),
+          toDateOnly(body.fecha_enviado),
+          toDateOnly(body.fecha_aprobado),
           usuarioModificacion,
           amdId,
         ],

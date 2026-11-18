@@ -100,52 +100,59 @@ const pivotContratoCabecera = async (numeroContrato) => {
   return rows?.[0] ?? null;
 };
 
+/** Carga plano AIU/IVA; si aún no existe columna observaciones, cae al SELECT anterior. */
+const loadPlanoRows = async (tableName, numerodoc) => {
+  const withObs = `SELECT
+          TRIM(item) AS item,
+          TRIM(IFNULL(insumo, '')) AS insumo,
+          TRIM(descripcion) AS detalle,
+          TRIM(IFNULL(observaciones, '')) AS observaciones,
+          cant AS cantidad_contratada,
+          TRIM(und) AS um,
+          ancho AS ancho_contrato,
+          alto AS alto_contrato
+        FROM ${tableName}
+        WHERE numdoc = ?
+          AND TRIM(IFNULL(item, '')) <> ''`;
+  const withoutObs = `SELECT
+          TRIM(item) AS item,
+          TRIM(IFNULL(insumo, '')) AS insumo,
+          TRIM(descripcion) AS detalle,
+          '' AS observaciones,
+          cant AS cantidad_contratada,
+          TRIM(und) AS um,
+          ancho AS ancho_contrato,
+          alto AS alto_contrato
+        FROM ${tableName}
+        WHERE numdoc = ?
+          AND TRIM(IFNULL(item, '')) <> ''`;
+  try {
+    return await queryAsync(withObs, [numerodoc]);
+  } catch (err) {
+    if (err?.code === 'ER_BAD_FIELD_ERROR') {
+      try {
+        return await queryAsync(withoutObs, [numerodoc]);
+      } catch (_) {
+        return [];
+      }
+    }
+    return [];
+  }
+};
+
 const loadItemsContrato = async (numerodoc) => {
   if (!numerodoc) return [];
 
-  let aiu = [];
-  let iva = [];
-  try {
-    aiu = await queryAsync(
-      `SELECT
-          TRIM(item) AS item,
-          TRIM(IFNULL(insumo, '')) AS insumo,
-          TRIM(descripcion) AS detalle,
-          cant AS cantidad_contratada,
-          TRIM(und) AS um,
-          ancho AS ancho_contrato,
-          alto AS alto_contrato
-        FROM aiu
-        WHERE numdoc = ?
-          AND TRIM(IFNULL(item, '')) <> ''`,
-      [numerodoc]
-    );
-  } catch (_) {
-    aiu = [];
-  }
-  try {
-    iva = await queryAsync(
-      `SELECT
-          TRIM(item) AS item,
-          TRIM(IFNULL(insumo, '')) AS insumo,
-          TRIM(descripcion) AS detalle,
-          cant AS cantidad_contratada,
-          TRIM(und) AS um,
-          ancho AS ancho_contrato,
-          alto AS alto_contrato
-        FROM iva_pleno
-        WHERE numdoc = ?
-          AND TRIM(IFNULL(item, '')) <> ''`,
-      [numerodoc]
-    );
-  } catch (_) {
-    iva = [];
-  }
+  const [aiu, iva] = await Promise.all([
+    loadPlanoRows('aiu', numerodoc),
+    loadPlanoRows('iva_pleno', numerodoc),
+  ]);
 
   const raw = [...(aiu || []), ...(iva || [])].map((r) => ({
     item: String(r.item ?? '').trim(),
     insumo: String(r.insumo ?? '').trim().toUpperCase(),
     detalle: String(r.detalle ?? '').trim(),
+    observaciones: String(r.observaciones ?? '').trim(),
     cantidad_contratada:
       r.cantidad_contratada != null ? Number(r.cantidad_contratada) : null,
     um: String(r.um ?? '').trim(),
@@ -168,6 +175,9 @@ const loadItemsContrato = async (numerodoc) => {
     }
     if (!previo.insumo && it.insumo) previo.insumo = it.insumo;
     if (!previo.detalle && it.detalle) previo.detalle = it.detalle;
+    if (!previo.observaciones && it.observaciones) {
+      previo.observaciones = it.observaciones;
+    }
     if (!previo.um && it.um) previo.um = it.um;
   }
 
@@ -534,6 +544,41 @@ const isRemisionAnuladaEstado = (estado) => {
   return v === '3' || v === 'ANULADA' || v === 'ANULADO';
 };
 
+/**
+ * Match contrato remisión: exacto + prefijo común (DINTEL↔DINTELES).
+ * `clavePlano` = remisiones_plano.contrato; `claveEav` = EAV numero_contrato.
+ */
+const sqlMatchClaveRemision = (aliasPlano, aliasEav) => `
+  (
+    UPPER(TRIM(IFNULL(${aliasPlano}, ''))) = UPPER(?)
+    OR UPPER(TRIM(IFNULL(${aliasEav}, ''))) = UPPER(?)
+    OR (
+      CHAR_LENGTH(?) >= 4
+      AND (
+        (
+          CHAR_LENGTH(TRIM(IFNULL(${aliasPlano}, ''))) >= 4
+          AND (
+            UPPER(TRIM(${aliasPlano})) LIKE CONCAT(UPPER(?), '%')
+            OR UPPER(?) LIKE CONCAT(UPPER(TRIM(${aliasPlano})), '%')
+          )
+        )
+        OR (
+          CHAR_LENGTH(TRIM(IFNULL(${aliasEav}, ''))) >= 4
+          AND (
+            UPPER(TRIM(${aliasEav})) LIKE CONCAT(UPPER(?), '%')
+            OR UPPER(?) LIKE CONCAT(UPPER(TRIM(${aliasEav})), '%')
+          )
+        )
+      )
+    )
+  )
+`;
+
+const paramsMatchClaveRemision = (numeroContrato) => {
+  const nc = String(numeroContrato ?? '').trim();
+  return [nc, nc, nc, nc, nc, nc, nc];
+};
+
 /** Acumulado remisionado por ítem (excluye remisiones anuladas). */
 const loadAcumuladoRemisiones = async (numeroContrato) => {
   const rows = await queryAsync(
@@ -542,12 +587,16 @@ const loadAcumuladoRemisiones = async (numeroContrato) => {
         rp.cantidad AS cantidad,
         est.valor_campo_doc AS estado
       FROM remisiones_plano rp
+      LEFT JOIN item_documentos nc
+        ON nc.numerodoc = rp.numerodoc
+       AND UPPER(TRIM(nc.tipo_doc)) = 'REMISIONES'
+       AND LOWER(nc.nombre_campo_doc) = 'numero_contrato'
       LEFT JOIN item_documentos est
         ON est.numerodoc = rp.numerodoc
        AND UPPER(TRIM(est.tipo_doc)) = 'REMISIONES'
        AND LOWER(est.nombre_campo_doc) = 'estado'
-      WHERE TRIM(rp.contrato) = ?`,
-    [numeroContrato]
+      WHERE ${sqlMatchClaveRemision('rp.contrato', 'nc.valor_campo_doc')}`,
+    paramsMatchClaveRemision(numeroContrato)
   );
 
   const byItem = new Map();
@@ -590,10 +639,14 @@ const loadRemisionesAnteriores = async (numeroContrato) => {
           THEN TRIM(eav.valor_campo_doc)
         END) AS estado
       FROM remisiones_plano rp
+      LEFT JOIN item_documentos nc
+        ON nc.numerodoc = rp.numerodoc
+       AND UPPER(TRIM(nc.tipo_doc)) = 'REMISIONES'
+       AND LOWER(nc.nombre_campo_doc) = 'numero_contrato'
       LEFT JOIN item_documentos eav
         ON eav.numerodoc = rp.numerodoc
        AND UPPER(TRIM(eav.tipo_doc)) = 'REMISIONES'
-      WHERE TRIM(rp.contrato) = ?
+      WHERE ${sqlMatchClaveRemision('rp.contrato', 'nc.valor_campo_doc')}
       GROUP BY
         rp.id,
         rp.numerodoc,
@@ -603,7 +656,7 @@ const loadRemisionesAnteriores = async (numeroContrato) => {
         rp.um,
         rp.observaciones
       ORDER BY rp.numerodoc DESC, rp.id DESC`,
-    [numeroContrato]
+    paramsMatchClaveRemision(numeroContrato)
   );
 
   const byKey = new Map();

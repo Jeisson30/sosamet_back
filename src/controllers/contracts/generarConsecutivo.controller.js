@@ -11,6 +11,10 @@ const REMISION_FLOOR = {
 const ACTA_PREFIX = "026";
 const ACTA_FLOOR = 184;
 
+/** OT: serie única para Crear + Asignar (OT-12979…). */
+const OT_PREFIX = "OT";
+const OT_FLOOR = 12979;
+
 const ejecutarQuery = (sql, values) => {
   return new Promise((resolve, reject) => {
     db.query(sql, values, (err, result) => {
@@ -94,7 +98,7 @@ const extractDigits = (raw) => {
 /**
  * Peek del siguiente consecutivo (NO incrementa contador).
  * Query/body:
- *  - tipo: ACTAS_DE_MEDIDA | REMISIONES
+ *  - tipo: ACTAS_DE_MEDIDA | REMISIONES | ASISTENCIA | ORDEN_TRABAJO | OT
  *  - empresa_asociada: 1 (SM) | 2 (HS) | 3 (DMS) — obligatorio para remisiones
  */
 const siguienteConsecutivo = async (req, res) => {
@@ -231,8 +235,43 @@ const siguienteConsecutivo = async (req, res) => {
       });
     }
 
+    if (
+      tipo === "ORDEN_TRABAJO" ||
+      tipo === "ORDEN_DE_TRABAJO" ||
+      tipo === "OT"
+    ) {
+      const rows = await ejecutarQuery(
+        `SELECT TRIM(consecutivo) AS consecutivo
+           FROM order_work
+          WHERE consecutivo IS NOT NULL
+            AND TRIM(consecutivo) <> ''`
+      );
+      const list = Array.isArray(rows) ? rows : [];
+      let maxNum = 0;
+      // OT-12979 | OT12979 | ot-0001
+      const re = /^OT-?(\d+)$/i;
+      for (const r of list) {
+        const cand = String(r.consecutivo || "").trim();
+        const m = cand.match(re);
+        if (!m) continue;
+        const n = Number(m[1]);
+        if (Number.isFinite(n) && n > maxNum) maxNum = n;
+      }
+      const next = Math.max(maxNum, OT_FLOOR - 1) + 1;
+      const consecutivo = `${OT_PREFIX}-${next}`;
+      return res.status(200).json({
+        mensaje: "Siguiente consecutivo de orden de trabajo calculado.",
+        tipo: "ORDEN_TRABAJO",
+        consecutivo,
+        numero: next,
+        prefijo: `${OT_PREFIX}-`,
+        piso: OT_FLOOR,
+      });
+    }
+
     return res.status(400).json({
-      mensaje: "tipo no soportado. Use ACTAS_DE_MEDIDA, REMISIONES o ASISTENCIA.",
+      mensaje:
+        "tipo no soportado. Use ACTAS_DE_MEDIDA, REMISIONES, ASISTENCIA u ORDEN_TRABAJO.",
     });
   } catch (error) {
     console.error("❌ Error al calcular siguiente consecutivo:", error);

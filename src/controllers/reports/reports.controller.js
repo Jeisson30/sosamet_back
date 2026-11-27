@@ -1898,7 +1898,8 @@ const exportMovimientos = (req, res) => {
 /**
  * Seguimiento Contrato (tarjeta PRODUCCIÓN) — opción A:
  * - Tabla base = plano actual (aiu ∪ iva_pleno, ya con Otros Sí aplicados).
- * - Remisionado = Σ remisiones_plano por ítem.
+ * - Remisionado = Σ remisiones_plano por ítem (mismo matcher que Detalle remisión).
+ * - Saldo = contratado − remisionado (rojo en front si < 0).
  * - Bloques Otros Sí = delta (cantidad_adicional); remisionado delta = 0 (no atribuible).
  * - Solo Otros Sí ACTIVO; AMBOS → sección cantidades (si hay ítems) + sección prórroga (si hay fecha).
  */
@@ -1913,6 +1914,103 @@ function toCantidadNum(value) {
 
 function round2(n) {
   return Math.round(Number(n || 0) * 100) / 100;
+}
+
+/** Misma regla que actaMedidaContexto (excluye anuladas). */
+function isRemisionAnuladaEstado(estado) {
+  const v = String(estado ?? '')
+    .trim()
+    .toUpperCase();
+  return v === '3' || v === 'ANULADA' || v === 'ANULADO';
+}
+
+/**
+ * Match contrato remisión: exacto + prefijo (DINTEL↔DINTELES) + EAV numero_contrato.
+ * Misma lógica que loadAcumuladoRemisiones (Detalle remisión).
+ */
+function sqlMatchClaveRemision(aliasPlano, aliasEav) {
+  return `
+  (
+    UPPER(TRIM(IFNULL(${aliasPlano}, ''))) = UPPER(?)
+    OR UPPER(TRIM(IFNULL(${aliasEav}, ''))) = UPPER(?)
+    OR (
+      CHAR_LENGTH(?) >= 4
+      AND (
+        (
+          CHAR_LENGTH(TRIM(IFNULL(${aliasPlano}, ''))) >= 4
+          AND (
+            UPPER(TRIM(${aliasPlano})) LIKE CONCAT(UPPER(?), '%')
+            OR UPPER(?) LIKE CONCAT(UPPER(TRIM(${aliasPlano})), '%')
+          )
+        )
+        OR (
+          CHAR_LENGTH(TRIM(IFNULL(${aliasEav}, ''))) >= 4
+          AND (
+            UPPER(TRIM(${aliasEav})) LIKE CONCAT(UPPER(?), '%')
+            OR UPPER(?) LIKE CONCAT(UPPER(TRIM(${aliasEav})), '%')
+          )
+        )
+      )
+    )
+  )
+`;
+}
+
+function paramsMatchClaveRemision(numeroContrato) {
+  const nc = String(numeroContrato ?? '').trim();
+  return [nc, nc, nc, nc, nc, nc, nc];
+}
+
+/** Σ remisionado por ítem; dedupe por id si se consultan varias claves. */
+async function loadRemisionadoMapSeguimiento(claves) {
+  const unique = [
+    ...new Set(
+      (claves || [])
+        .map((c) => String(c ?? '').trim())
+        .filter(Boolean)
+    ),
+  ];
+  const remMap = new Map();
+  const seenIds = new Set();
+
+  for (const clave of unique) {
+    const rows = await dbQueryAsync(
+      `SELECT
+          rp.id,
+          TRIM(rp.item) AS item,
+          rp.cantidad AS cantidad,
+          est.valor_campo_doc AS estado
+        FROM remisiones_plano rp
+        LEFT JOIN item_documentos nc
+          ON nc.numerodoc = rp.numerodoc
+         AND UPPER(TRIM(nc.tipo_doc)) = 'REMISIONES'
+         AND LOWER(nc.nombre_campo_doc) = 'numero_contrato'
+        LEFT JOIN item_documentos est
+          ON est.numerodoc = rp.numerodoc
+         AND UPPER(TRIM(est.tipo_doc)) = 'REMISIONES'
+         AND LOWER(est.nombre_campo_doc) = 'estado'
+       WHERE ${sqlMatchClaveRemision('rp.contrato', 'nc.valor_campo_doc')}`,
+      paramsMatchClaveRemision(clave)
+    );
+
+    for (const r of rows || []) {
+      if (isRemisionAnuladaEstado(r.estado)) continue;
+      const id = r.id != null ? Number(r.id) : null;
+      if (id != null && Number.isFinite(id)) {
+        if (seenIds.has(id)) continue;
+        seenIds.add(id);
+      }
+      const itemKey = String(r.item ?? '')
+        .trim()
+        .toUpperCase();
+      if (!itemKey) continue;
+      const n = Number(String(r.cantidad ?? '').trim().replace(',', '.'));
+      const add = Number.isFinite(n) ? n : 0;
+      remMap.set(itemKey, (remMap.get(itemKey) || 0) + add);
+    }
+  }
+
+  return remMap;
 }
 
 async function resolveContratoNumerodoc(numeroContrato) {
@@ -1992,11 +2090,12 @@ async function loadSeguimientoContratoDataset(numeroContrato) {
   }
 
   const itemRows = await dbQueryAsync(
-    `SELECT 'AIU' AS tabla_origen, a.id AS id_item, a.ref, a.item, a.descripcion, a.und AS um, a.cant AS cantidad
+    `SELECT 'AIU' AS tabla_origen, a.id AS id_item, a.ref, a.item, a.descripcion,
+            a.observaciones, a.und AS um, a.cant AS cantidad
        FROM aiu a
       WHERE TRIM(a.numdoc) = ?
       UNION ALL
-     SELECT 'IVA', i.id, i.ref, i.item, i.descripcion, i.und, i.cant
+     SELECT 'IVA', i.id, i.ref, i.item, i.descripcion, i.observaciones, i.und, i.cant
        FROM iva_pleno i
       WHERE TRIM(i.numdoc) = ?
       ORDER BY tabla_origen, id_item`,
@@ -2004,40 +2103,22 @@ async function loadSeguimientoContratoDataset(numeroContrato) {
   );
 
   const numeroVisible = String(cab.numero_contrato || numerodoc).trim();
-  const remKeys = [...new Set([numerodoc, numeroVisible].map((k) => k.toUpperCase()).filter(Boolean))];
-  const remPlaceholders = remKeys.map(() => '?').join(',');
-  const remRows = remKeys.length
-    ? await dbQueryAsync(
-        `SELECT UPPER(TRIM(item)) AS item_key,
-                SUM(
-                  CASE
-                    WHEN cantidad REGEXP '^[0-9]+$'
-                      OR cantidad REGEXP '^[0-9]+[.,][0-9]+$'
-                      THEN CAST(REPLACE(cantidad, ',', '.') AS DECIMAL(18, 2))
-                    ELSE 0
-                  END
-                ) AS remisionado
-           FROM remisiones_plano
-          WHERE UPPER(TRIM(contrato)) IN (${remPlaceholders})
-          GROUP BY UPPER(TRIM(item))`,
-        remKeys
-      )
-    : [];
-  const remMap = new Map();
-  for (const r of remRows || []) {
-    const key = String(r.item_key || '').trim().toUpperCase();
-    if (!key) continue;
-    remMap.set(key, toCantidadNum(r.remisionado));
-  }
+  // Mismo criterio que Detalle remisión (exacto + prefijo + EAV); no solo IN exacto.
+  const remMap = await loadRemisionadoMapSeguimiento([numeroVisible, numerodoc]);
 
   const items = (itemRows || []).map((r) => {
     const item = String(r.item || '').trim();
     const contratado = toCantidadNum(r.cantidad);
     const remisionado = remMap.get(item.toUpperCase()) || 0;
+    const obs =
+      r.observaciones != null && String(r.observaciones).trim()
+        ? String(r.observaciones).trim()
+        : null;
     return {
       ref: r.ref != null ? String(r.ref).trim() : null,
       item: item || null,
       descripcion: r.descripcion != null ? String(r.descripcion).trim() : null,
+      observaciones: obs,
       um: r.um != null ? String(r.um).trim() : null,
       contratado: round2(contratado),
       remisionado: round2(remisionado),
@@ -2111,10 +2192,15 @@ async function loadSeguimientoContratoDataset(numeroContrato) {
             (d.um != null && String(d.um).trim()) ||
             (origin?.um != null ? String(origin.um).trim() : null) ||
             null;
+          const observaciones =
+            origin?.observaciones != null && String(origin.observaciones).trim()
+              ? String(origin.observaciones).trim()
+              : null;
           return {
             ref,
             item: itemCode,
             descripcion,
+            observaciones,
             um,
             contratado: round2(contratado),
             remisionado: 0,
